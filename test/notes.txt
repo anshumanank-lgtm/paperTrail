@@ -1,0 +1,118 @@
+Computer Networks — Semester Notes
+
+Course: Computer Networks
+Student: Anshuman Kumar
+Semester: 6
+University: ABC Institute of Technology
+
+Unit 1: Introduction to Computer Networks
+
+A computer network is a collection of interconnected devices that communicate with each other and share resources.
+
+Important concepts:
+- LAN: Local Area Network used within a limited geographic area.
+- WAN: Wide Area Network covering large geographic areas.
+- MAN: Metropolitan Area Network covering a city or campus.
+- PAN: Personal Area Network used around an individual.
+- Network topology describes how devices are connected.
+- Common topologies include star, bus, ring, and mesh.
+
+OSI Model:
+1. Physical Layer
+2. Data Link Layer
+3. Network Layer
+4. Transport Layer
+5. Session Layer
+6. Presentation Layer
+7. Application Layer
+
+TCP/IP Model:
+- Network Access
+- Internet
+- Transport
+- Application
+
+Unit 2: Data Link Layer
+
+The data link layer provides node-to-node delivery and error detection.
+
+Important protocols and concepts:
+- Ethernet
+- MAC addresses
+- ARP
+- CSMA/CD
+- Frames
+- CRC error detection
+
+MAC Address:
+A MAC address is a hardware address used to identify a network interface.
+Example: 00:1A:2B:3C:4D:5E
+
+Unit 3: Network Layer
+
+The network layer is responsible for logical addressing and routing.
+
+Important concepts:
+- IPv4
+- IPv6
+- Subnetting
+- Routing tables
+- Routers
+- ICMP
+
+Example IPv4 address:
+192.168.1.10
+
+Unit 4: Transport Layer
+
+The transport layer provides end-to-end communication.
+
+TCP:
+- Connection-oriented
+- Reliable
+- Provides sequencing and retransmission
+- Uses a three-way handshake
+
+UDP:
+- Connectionless
+- Faster and lightweight
+- Does not guarantee delivery
+- Useful for streaming and real-time applications
+
+Important TCP ports:
+- HTTP: 80
+- HTTPS: 443
+- SSH: 22
+- DNS: 53
+
+Unit 5: Application Layer
+
+Important application-layer protocols:
+- HTTP and HTTPS
+- DNS
+- DHCP
+- FTP
+- SMTP
+- SSH
+
+DNS converts domain names into IP addresses.
+
+Exam Preparation
+
+Important questions:
+1. Explain the OSI model with all seven layers.
+2. Compare TCP and UDP.
+3. Explain IPv4 addressing and subnetting.
+4. What is DNS and how does DNS resolution work?
+5. Explain the TCP three-way handshake.
+6. Explain Ethernet and MAC addressing.
+7. Compare IPv4 and IPv6.
+
+Assignment
+
+Prepare a short report on "The Evolution of Computer Networks from ARPANET to Modern Cloud Networks".
+
+Submission deadline: 15 September 2026.
+
+Reference:
+Computer Networking: A Top-Down Approach
