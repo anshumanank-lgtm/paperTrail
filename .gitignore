@@ -1,0 +1,50 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Papertrail local data
+index.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Test documents
+test/
+
+# Python / ML caches
+.cache/
+models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/

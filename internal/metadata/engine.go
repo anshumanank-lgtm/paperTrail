@@ -9,7 +9,7 @@ type MetadataEngine interface {
 }
 
 func DefaultMetadataEngine() MetadataEngine {
-	return &DefaultMetadataEngineImpl{}
+	return NewPythonMetadataEngine()
 }
 
 type DefaultMetadataEngineImpl struct{}

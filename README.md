@@ -1,82 +1,112 @@
 # Papertrail
 
-Papertrail is a personal document archive engine that scans a folder, understands supported documents, and produces a normalized document representation.
+Papertrail is a privacy-first personal document archive engine.
 
-The current engine is focused on the core ingestion and understanding pipeline. The UI, persistent indexing, OCR, semantic search, and cloud functionality are not part of the current POC.
+It scans local documents, extracts their content, understands them using local intelligence, and builds a normalized local index.
 
-## Current design
+The product is **local-first and desktop-first**, with Windows as the initial target. Original files remain the source of truth; Papertrail stores derived metadata, indexes, entities, and relationships locally.
 
-Papertrail processes documents through the following flow:
+## 1. Design
 
-    Folder
-       ↓
-    Scanner
-       ↓
-    Worker pool
-       ↓
-    Converter
-       ↓
-    ExtractedContent
-       ↓
-    MetadataEngine
-       ↓
-    Document
-       ↓
-    Output
+### Core engine
 
-The pipeline uses a fan-out/fan-in worker pattern so files can be processed concurrently.
+The core engine is format-independent and sits above the filesystem:
 
-## Current support
+```text
+Folder
+  ↓
+Scanner
+  ↓
+Pipeline / Worker Pool
+  ↓
+Converter
+  ↓
+ExtractedContent
+  ↓
+Metadata / Intelligence
+  ↓
+Normalized Document
+  ↓
+SQLite Index
+```
 
-- Recursive folder scanning and file metadata collection
-- TXT text extraction
-- PDF embedded-text extraction
-- PDF page-count extraction
-- Converter dispatch based on file extension
-- Concurrent document processing using a worker pool
-- Normalized document model separating file metadata from document metadata
-- Type-specific document metadata models
-- Basic metadata extraction through the MetadataEngine interface
+### Pipeline / worker pool
 
-The scanner recognizes additional office-document extensions, but converters for those formats have not been added yet.
+The `pipeline` package owns orchestration. It uses a fan-out/fan-in worker pool so multiple documents can be processed concurrently, with `maxWorkers` controlling concurrency.
 
-Image-only PDFs are not OCR'd.
+### Document normalization
 
-## Document model
+Converters turn supported files into `ExtractedContent`. The domain layer then represents each file as a normalized `Document`, separating filesystem metadata from document metadata.
 
-Each processed file becomes a normalized `Document` containing two distinct parts:
+### Metadata / intelligence
 
-- `FileMetadata` — information about the source file
-- `DocumentMetadata` — semantic information extracted from the document
+The intelligence layer classifies document types and extracts entities using local ML. Go owns the domain model and confidence thresholds; Python currently runs GLiNER2.
 
-`DocumentMetadata` contains:
+### SQLite storage
 
-- Title
-- Document type
-- Entities
-- Type-specific metadata
+SQLite stores the derived document index, including documents, entities, and relationships. The filesystem remains the source of truth.
 
-Supported document types currently include:
+### Entity + relationship model
 
-- Invoice
-- Receipt
-- Bill
-- Statement
-- Contract
-- Insurance policy
-- Ticket
-- Identity
-- Payslip
-- Tax
-- Warranty
-- Other
-- Unknown
+Documents contain typed entities such as people, organisations, locations, dates, money, products, and IDs. Relationships are derived from meaningful shared entities, providing explainable connections between documents.
 
-Unknown and other documents can retain generic topics and keywords.
+### Current Python / GLiNER boundary
 
-## Run
+The current POC uses a persistent local Python process and JSON Lines for Go ↔ Python communication. GLiNER2 is loaded by that process. This is a temporary boundary and will be replaced by local gRPC.
 
-From the repository root:
+## 2. Usage
+
+### Setup
+
+Create the Python environment and install intelligence dependencies:
 
 ```bash
-go run ./cmd/papertrail /path/to/folder
+make venv
+```
+
+### Build
+
+```bash
+make build
+```
+
+### Run against a folder
+
+```bash
+make run ARGS=./test
+```
+
+`make run` builds the application first. `make scan ARGS=./test` is also available as an alias.
+
+### Supported formats
+
+Currently converted:
+
+- TXT
+- PDF
+
+The scanner also recognizes DOC, DOCX, XLS, XLSX, PPT, and PPTX, but converters for those formats are not implemented yet.
+
+### Current CLI output
+
+The CLI currently scans the folder, converts documents, extracts metadata and entities, stores the results in SQLite, and creates document relationships. It reports pipeline progress and processing results to the console.
+
+Other useful commands:
+
+```bash
+make test
+make sca
+make clean
+```
+
+`make sca` runs golangci-lint v2.13.2. `make clean` removes the built binary and `index.db`.
+
+## 3. TODO
+
+- Replace JSON Lines with a local gRPC Go ↔ Python intelligence interface
+- Initialize GLiNER once at Python server startup
+- Support concurrent gRPC requests
+- Add batched inference
+- Tie intelligence batch size to pipeline `maxWorkers`
+- Add proper startup/readiness handling
+- Tune performance and intelligence quality

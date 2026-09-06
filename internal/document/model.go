@@ -1,9 +1,14 @@
 package document
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Document is the normalized representation of a converted file.
 type Document struct {
+	ID               uuid.UUID        `json:"id"`
 	FileMetadata     FileMetadata     `json:"file_metadata"`
 	DocumentMetadata DocumentMetadata `json:"document_metadata"`
 }
@@ -260,15 +265,35 @@ func (*WarrantyMetadata) DocumentType() DocumentType {
 type EntityType string
 
 const (
+	// Tier 1 — Always extract
 	EntityTypePerson       EntityType = "person"
 	EntityTypeOrganisation EntityType = "organisation"
-	EntityTypeProduct      EntityType = "product"
-	EntityTypeVehicle      EntityType = "vehicle"
 	EntityTypeLocation     EntityType = "location"
+	EntityTypeDate         EntityType = "date"
+	EntityTypeTime         EntityType = "time"
+	EntityTypeMoney        EntityType = "money"
+	EntityTypePercent      EntityType = "percent"
+	EntityTypeQuantity     EntityType = "quantity"
+	EntityTypeEmail        EntityType = "email"
+	EntityTypePhoneNumber  EntityType = "phone_number"
+	EntityTypeURL          EntityType = "url"
+	EntityTypeProduct      EntityType = "product"
+	EntityTypeEvent        EntityType = "event"
+	EntityTypeVehicle      EntityType = "vehicle"
+
+	// Tier 2 — Extract if present
+	EntityTypeAddress      EntityType = "address"
+	EntityTypeIDNumber     EntityType = "id_number"
+	EntityTypeJobTitle     EntityType = "job_title"
+	EntityTypeLaw          EntityType = "law"
+	EntityTypeRegulation   EntityType = "regulation"
+	EntityTypeLanguage     EntityType = "language"
+	EntityTypeSocialHandle EntityType = "social_handle"
 )
 
 // Entity represents a named entity extracted from a document.
 type Entity struct {
-	Type  EntityType `json:"type"`
-	Value string     `json:"value"`
+	ID    uuid.UUID
+	Type  EntityType
+	Value string
 }

@@ -1,14 +1,19 @@
 APP := papertrail
 BUILD_DIR := bin
+VENV := .venv
 
-.PHONY: build run scan sca test clean
+.PHONY: venv build run scan sca test clean
+
+venv:
+	python3 -m venv $(VENV)
+	$(VENV)/bin/pip install -r internal/intelligence/requirements.txt
 
 build:
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(APP) .
+	go build -o $(BUILD_DIR)/$(APP) ./cmd/papertrail
 
-run: build
-	./$(BUILD_DIR)/$(APP) ./test
+run:build
+	./$(BUILD_DIR)/$(APP) $(ARGS)
 
 scan: run
 
@@ -20,3 +25,4 @@ test:
 
 clean:
 	rm -f $(BUILD_DIR)/$(APP)
+	rm index.db
