@@ -6,4 +6,7 @@ type ExtractedContent struct {
 	Text      string
 	Headings  []string
 	PageCount int
+
+	Author  string
+	Creator string
 }

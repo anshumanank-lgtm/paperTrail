@@ -15,6 +15,8 @@ type Storage interface {
 	UpdateDocument(ctx context.Context, id uuid.UUID, doc document.Document, fingerprint string) error
 	DeleteDocument(ctx context.Context, id uuid.UUID) error
 	ListDocuments(ctx context.Context) ([]document.Document, error)
+	GetDocumentsByAuthor(ctx context.Context, author string) ([]uuid.UUID, error)
+	GetDocumentsByCreator(ctx context.Context, creator string) ([]uuid.UUID, error)
 
 	GetOrCreateEntity(ctx context.Context, entity document.Entity) (uuid.UUID, error)
 	AttachEntityToDocument(ctx context.Context, documentID uuid.UUID, entityID uuid.UUID, role string) error

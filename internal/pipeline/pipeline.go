@@ -208,6 +208,8 @@ func (p *Pipeline) processFile(
 			Extension:  file.Extension,
 			Size:       file.Size,
 			ModifiedAt: file.ModifiedAt,
+			Author:     content.Author,
+			Creator:    content.Creator,
 		},
 		DocumentMetadata: docMetadata,
 	}
@@ -250,6 +252,10 @@ func (p *Pipeline) storeEntities(
 ) {
 	for i := range doc.DocumentMetadata.Entities {
 		entity := &doc.DocumentMetadata.Entities[i]
+
+		if !shouldStoreEntity(entity.Type) {
+			continue
+		}
 
 		entityID, err := p.storage.GetOrCreateEntity(
 			ctx,
@@ -339,5 +345,27 @@ func (p *Pipeline) outputDocuments(
 		}
 
 		fmt.Println(string(data))
+	}
+}
+
+func shouldStoreEntity(entityType document.EntityType) bool {
+	switch entityType {
+	case
+		document.EntityTypePerson,
+		document.EntityTypeOrganisation,
+		document.EntityTypeProduct,
+		document.EntityTypeIDNumber,
+		document.EntityTypeEvent,
+		document.EntityTypeAddress,
+		document.EntityTypeVehicle,
+		document.EntityTypeLocation,
+		document.EntityTypeMoney,
+		document.EntityTypeDate,
+		document.EntityTypeEmail,
+		document.EntityTypePhoneNumber,
+		document.EntityTypeJobTitle:
+		return true
+	default:
+		return false
 	}
 }

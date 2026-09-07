@@ -1,5 +1,4 @@
 import contextlib
-import json
 import sys
 
 from gliner2 import GLiNER2
@@ -54,105 +53,93 @@ ENTITY_TYPES = {
     "document_title": "The title or heading that identifies the document.",
 }
 
-
-print("Loading GLiNER2...", file=sys.stderr)
-
-with contextlib.redirect_stdout(sys.stderr):
-    extractor = GLiNER2.from_pretrained(MODEL_NAME)
+LONG_DOCUMENT_OVERLAP = 64
 
 
-schema = (
-    extractor.create_schema()
-    .entities(ENTITY_TYPES)
-    .classification(
-        "document_type",
-        DOCUMENT_TYPES,
-    )
-)
+class IntelligenceEngine:
+    def __init__(self):
+        print("Loading GLiNER2...", file=sys.stderr)
 
+        with contextlib.redirect_stdout(sys.stderr):
+            self.extractor = GLiNER2.from_pretrained(MODEL_NAME)
 
-print("GLiNER2 intelligence engine ready", file=sys.stderr)
+        self.schema = (
+            self.extractor.create_schema()
+            .entities(ENTITY_TYPES)
+            .classification(
+                "document_type",
+                DOCUMENT_TYPES,
+            )
+        )
 
+        print(
+            "GLiNER2 intelligence engine ready "
+            "(long-document chunking enabled)"
+        )
 
-def process(content):
-    text = content.get("text", "")
+    def extract(self, text):
+        if not text.strip():
+            return {
+                "title": "",
+                "title_confidence": 0.0,
+                "document_type": "unknown",
+                "document_type_confidence": 0.0,
+                "entities": [],
+            }
 
-    if not text.strip():
+        result = self.extractor.extract_long(
+            text,
+            self.schema,
+            chunk_size=384,
+            chunk_overlap=64,
+            include_confidence=True,
+        )
+
+        return self._parse_result(result)
+
+    def _parse_result(self, result):
+        title = ""
+        title_confidence = 0.0
+        entities = []
+
+        for label, values in result.get("entities", {}).items():
+            for value in values:
+                if isinstance(value, dict):
+                    entity_value = value.get("text", "")
+                    confidence = value.get("confidence", 0.0)
+                else:
+                    entity_value = value
+                    confidence = 1.0
+
+                if not entity_value:
+                    continue
+
+                if label == "document_title":
+                    if confidence > title_confidence:
+                        title = entity_value
+                        title_confidence = confidence
+                    continue
+
+                entities.append({
+                    "type": label,
+                    "value": entity_value,
+                    "confidence": confidence,
+                })
+
+        document_type = result.get("document_type", "unknown")
+        document_type_confidence = 0.0
+
+        if isinstance(document_type, dict):
+            document_type_confidence = document_type.get("confidence", 0.0)
+            document_type = document_type.get("label", "unknown")
+
         return {
-            "title": "",
-            "title_confidence": 0.0,
-            "document_type": "unknown",
-            "document_type_confidence": 0.0,
-            "entities": [],
+            "title": title,
+            "title_confidence": title_confidence,
+            "document_type": document_type,
+            "document_type_confidence": document_type_confidence,
+            "entities": entities,
         }
 
-    result = extractor.extract(
-        text,
-        schema,
-        include_confidence=True,
-    )
-
-    title = ""
-    title_confidence = 0.0
-    entities = []
-
-    for label, values in result.get("entities", {}).items():
-        for value in values:
-            if isinstance(value, dict):
-                entity_value = value.get("text", "")
-                confidence = value.get("confidence", 0.0)
-            else:
-                entity_value = value
-                confidence = 1.0
-
-            if label == "document_title":
-                if entity_value:
-                    title = entity_value
-                    title_confidence = confidence
-                continue
-
-            entities.append({
-                "type": label,
-                "value": entity_value,
-                "confidence": confidence,
-            })
-
-    document_type = result.get("document_type", "unknown")
-    document_type_confidence = 0.0
-
-    if isinstance(document_type, dict):
-        document_type_confidence = document_type.get("confidence", 0.0)
-        document_type = document_type.get("label", "unknown")
-
-    return {
-        "title": title,
-        "title_confidence": title_confidence,
-        "document_type": document_type,
-        "document_type_confidence": document_type_confidence,
-        "entities": entities,
-    }
-
-
-def main():
-    for line in sys.stdin:
-        line = line.strip()
-
-        if not line:
-            continue
-
-        try:
-            content = json.loads(line)
-            result = process(content)
-            print(json.dumps(result), flush=True)
-
-        except Exception as exc:
-            print(
-                json.dumps({
-                    "error": str(exc),
-                }),
-                flush=True,
-            )
-
-
-if __name__ == "__main__":
-    main()
+    def extract_batch(self, texts):
+        return [self.extract(text) for text in texts]

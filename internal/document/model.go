@@ -20,6 +20,8 @@ type FileMetadata struct {
 	Extension  string    `json:"extension"`
 	Size       int64     `json:"size"`
 	ModifiedAt time.Time `json:"modified_at"`
+	Author     string    `json:"author,omitempty"`
+	Creator    string    `json:"creator,omitempty"`
 }
 
 // DocumentMetadata contains semantic information extracted from the document.

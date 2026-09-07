@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,6 +62,21 @@ func (e *Engine) ProcessDocument(
 	ctx context.Context,
 	documentID uuid.UUID,
 ) error {
+	if err := e.processEntityRelationships(ctx, documentID); err != nil {
+		return err
+	}
+
+	if err := e.processMetadataRelationships(ctx, documentID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Engine) processEntityRelationships(
+	ctx context.Context,
+	documentID uuid.UUID,
+) error {
 	entities, err := e.storage.GetDocumentEntities(
 		ctx,
 		documentID,
@@ -115,6 +131,81 @@ func (e *Engine) ProcessDocument(
 					err,
 				)
 			}
+		}
+	}
+
+	return nil
+}
+
+func (e *Engine) processMetadataRelationships(
+	ctx context.Context,
+	documentID uuid.UUID,
+) error {
+	doc, err := e.storage.GetDocument(ctx, documentID)
+	if err != nil {
+		return fmt.Errorf("get document: %w", err)
+	}
+
+	if author := strings.TrimSpace(doc.FileMetadata.Author); author != "" {
+		if err := e.processMetadataValue(
+			ctx,
+			documentID,
+			author,
+			"shared_author",
+			e.storage.GetDocumentsByAuthor,
+		); err != nil {
+			return err
+		}
+	}
+
+	if creator := strings.TrimSpace(doc.FileMetadata.Creator); creator != "" {
+		if err := e.processMetadataValue(
+			ctx,
+			documentID,
+			creator,
+			"shared_creator",
+			e.storage.GetDocumentsByCreator,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (e *Engine) processMetadataValue(
+	ctx context.Context,
+	documentID uuid.UUID,
+	value string,
+	relationshipType string,
+	getDocuments func(context.Context, string) ([]uuid.UUID, error),
+) error {
+	otherDocumentIDs, err := getDocuments(ctx, value)
+	if err != nil {
+		return fmt.Errorf(
+			"get documents for %s: %w",
+			relationshipType,
+			err,
+		)
+	}
+
+	for _, otherDocumentID := range otherDocumentIDs {
+		if otherDocumentID == documentID {
+			continue
+		}
+
+		if _, err := e.storage.CreateRelationship(
+			ctx,
+			documentID,
+			otherDocumentID,
+			relationshipType,
+			nil,
+		); err != nil {
+			return fmt.Errorf(
+				"create %s relationship: %w",
+				relationshipType,
+				err,
+			)
 		}
 	}
 
@@ -223,6 +314,10 @@ func relationshipPriority(relationshipType string) (int, bool) {
 		return 5, true
 	case "shared_person":
 		return 6, true
+	case "shared_author":
+		return 7, true
+	case "shared_creator":
+		return 8, true
 	default:
 		return 0, false
 	}

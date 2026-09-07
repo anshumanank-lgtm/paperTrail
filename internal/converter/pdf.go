@@ -1,16 +1,18 @@
 package converter
 
 import (
+	"context"
 	"fmt"
-	"io"
+	"os"
 
 	"papertrail/internal/document"
 	"papertrail/internal/scanner"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/giraffesyo/pdf"
 )
 
-// PDFConverter extracts embedded text from PDF files. It does not perform OCR.
+// PDFConverter extracts embedded text and metadata from PDF files.
+// It does not perform OCR.
 type PDFConverter struct{}
 
 func (PDFConverter) Supports(extension string) bool {
@@ -18,24 +20,33 @@ func (PDFConverter) Supports(extension string) bool {
 }
 
 func (PDFConverter) Convert(file scanner.DocumentFile) (document.ExtractedContent, error) {
-	pdfFile, reader, err := pdf.Open(file.AbsolutePath)
+	f, err := os.Open(file.AbsolutePath)
 	if err != nil {
 		return document.ExtractedContent{}, fmt.Errorf("open PDF: %w", err)
 	}
-	defer pdfFile.Close()
+	defer f.Close()
 
-	textReader, err := reader.GetPlainText()
+	info, err := f.Stat()
 	if err != nil {
-		return document.ExtractedContent{}, fmt.Errorf("extract PDF text: %w", err)
+		return document.ExtractedContent{}, fmt.Errorf("stat PDF: %w", err)
 	}
 
-	text, err := io.ReadAll(textReader)
+	pdfDocument, err := pdf.ExtractWithOptions(
+		context.Background(),
+		f,
+		info.Size(),
+		pdf.Options{
+			IncludeMetadata: true,
+		},
+	)
 	if err != nil {
-		return document.ExtractedContent{}, fmt.Errorf("read extracted PDF text: %w", err)
+		return document.ExtractedContent{}, fmt.Errorf("extract PDF: %w", err)
 	}
 
 	return document.ExtractedContent{
-		Text:      string(text),
-		PageCount: reader.NumPage(),
+		Text:      pdfDocument.Text(),
+		PageCount: pdfDocument.PageCount,
+		Author:    pdfDocument.Metadata.Author,
+		Creator:   pdfDocument.Metadata.Creator,
 	}, nil
 }

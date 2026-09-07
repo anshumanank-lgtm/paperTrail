@@ -1,9 +1,18 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"papertrail/internal/converter"
+	"papertrail/internal/intelligence"
+	intelligencepb "papertrail/internal/intelligence/proto"
 	"papertrail/internal/metadata"
 	"papertrail/internal/pipeline"
 	"papertrail/internal/relationship"
@@ -16,13 +25,49 @@ func main() {
 
 	if len(os.Args) < 2 {
 		log.Error("usage: papertrail <folder>")
-		os.Exit(1)
+		return
 	}
+
+	ctx, cancel := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer cancel()
+
+	log.Info("Starting Python intelligence server")
+
+	pythonServer, err := intelligence.StartPythonServer(ctx)
+	if err != nil {
+		log.Error("failed to start Python intelligence server: %v", err)
+		return
+	}
+
+	defer func() {
+		if err := pythonServer.Stop(); err != nil {
+			log.Error("failed to stop Python intelligence server: %v", err)
+		}
+	}()
+
+	log.Info("Python intelligence server ready")
+
+	conn, err := grpc.NewClient(
+		"127.0.0.1:50051",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Error("failed to connect to intelligence server: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	intelligenceClient := intelligencepb.NewIntelligenceServiceClient(conn)
+	metadataEngine := metadata.NewGRPCMetadataEngine(intelligenceClient)
 
 	sqliteStorage, err := storage.NewSQLiteStorage("index.db")
 	if err != nil {
 		log.Error("failed to initialize storage: %v", err)
-		os.Exit(1)
+		return
 	}
 	defer sqliteStorage.Close()
 
@@ -30,15 +75,19 @@ func main() {
 
 	p := pipeline.New(
 		converter.Default(),
-		metadata.DefaultMetadataEngine(),
+		metadataEngine,
 		sqliteStorage,
 		relationshipEngine,
 		log,
-		4,
+		5,
 	)
+
+	start := time.Now()
 
 	if err := p.Run(os.Args[1]); err != nil {
 		log.Error("%v", err)
-		os.Exit(1)
+		return
 	}
+
+	log.Info("Completed in %v", time.Since(start))
 }

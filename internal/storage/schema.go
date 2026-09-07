@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS documents (
     title           TEXT,
     document_type   TEXT NOT NULL,
 
+    author          TEXT,
+    creator         TEXT,
+
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );

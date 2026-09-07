@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package intelligence;
+
+option go_package = "papertrail/internal/intelligence/proto;intelligencepb";
+
+service IntelligenceService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Extract(ExtractRequest) returns (ExtractResponse);
+  rpc ExtractBatch(ExtractBatchRequest) returns (ExtractBatchResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ready = 1;
+}
+
+message ExtractRequest {
+  string text = 1;
+}
+
+message ExtractBatchRequest {
+  repeated ExtractRequest documents = 1;
+}
+
+message ExtractBatchResponse {
+  repeated ExtractResponse documents = 1;
+}
+
+message ExtractResponse {
+  string title = 1;
+  float title_confidence = 2;
+
+  string document_type = 3;
+  float document_type_confidence = 4;
+
+  repeated Entity entities = 5;
+}
+
+message Entity {
+  string type = 1;
+  string value = 2;
+  float confidence = 3;
+}

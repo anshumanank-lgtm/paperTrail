@@ -16,6 +16,8 @@ func (s *SQLiteStorage) CreateDocument(
 	doc document.Document,
 	fingerprint string,
 ) (uuid.UUID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
 	id := doc.ID
@@ -34,10 +36,12 @@ func (s *SQLiteStorage) CreateDocument(
 			fingerprint,
 			title,
 			document_type,
+			author,
+			creator,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		uuidToBytes(id),
 		doc.FileMetadata.SourcePath,
@@ -48,6 +52,8 @@ func (s *SQLiteStorage) CreateDocument(
 		fingerprint,
 		doc.DocumentMetadata.Title,
 		doc.DocumentMetadata.DocumentType,
+		doc.FileMetadata.Author,
+		doc.FileMetadata.Creator,
 		now,
 		now,
 	)
@@ -71,7 +77,9 @@ func (s *SQLiteStorage) GetDocument(
 			size,
 			modified_at,
 			title,
-			document_type
+			document_type,
+			author,
+			creator
 		FROM documents
 		WHERE id = ?
 	`, uuidToBytes(id))
@@ -101,7 +109,9 @@ func (s *SQLiteStorage) GetDocumentByPath(
 			size,
 			modified_at,
 			title,
-			document_type
+			document_type,
+			author,
+			creator
 		FROM documents
 		WHERE source_path = ?
 	`, sourcePath)
@@ -124,6 +134,8 @@ func (s *SQLiteStorage) UpdateDocument(
 	doc document.Document,
 	fingerprint string,
 ) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
 	result, err := s.db.ExecContext(ctx, `
@@ -137,6 +149,8 @@ func (s *SQLiteStorage) UpdateDocument(
 			fingerprint = ?,
 			title = ?,
 			document_type = ?,
+			author = ?,
+			creator = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -148,6 +162,8 @@ func (s *SQLiteStorage) UpdateDocument(
 		fingerprint,
 		doc.DocumentMetadata.Title,
 		doc.DocumentMetadata.DocumentType,
+		doc.FileMetadata.Author,
+		doc.FileMetadata.Creator,
 		now,
 		uuidToBytes(id),
 	)
@@ -203,7 +219,9 @@ func (s *SQLiteStorage) ListDocuments(
 			size,
 			modified_at,
 			title,
-			document_type
+			document_type,
+			author,
+			creator
 		FROM documents
 		ORDER BY modified_at DESC
 	`)
@@ -244,6 +262,8 @@ func scanDocument(row rowScanner) (*document.Document, error) {
 		modifiedAt   string
 		title        sql.NullString
 		documentType string
+		author       sql.NullString
+		creator      sql.NullString
 	)
 
 	if err := row.Scan(
@@ -255,6 +275,8 @@ func scanDocument(row rowScanner) (*document.Document, error) {
 		&modifiedAt,
 		&title,
 		&documentType,
+		&author,
+		&creator,
 	); err != nil {
 		return nil, err
 	}
@@ -277,10 +299,88 @@ func scanDocument(row rowScanner) (*document.Document, error) {
 			Extension:  extension,
 			Size:       size,
 			ModifiedAt: parsedModifiedAt,
+			Author:     author.String,
+			Creator:    creator.String,
 		},
 		DocumentMetadata: document.DocumentMetadata{
 			Title:        title.String,
 			DocumentType: document.DocumentType(documentType),
 		},
 	}, nil
+}
+
+func (s *SQLiteStorage) GetDocumentsByAuthor(
+	ctx context.Context,
+	author string,
+) ([]uuid.UUID, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id
+		FROM documents
+		WHERE lower(trim(author)) = lower(trim(?))
+	`, author)
+	if err != nil {
+		return nil, fmt.Errorf("get documents by author: %w", err)
+	}
+	defer rows.Close()
+
+	var documentIDs []uuid.UUID
+
+	for rows.Next() {
+		var idBytes []byte
+
+		if err := rows.Scan(&idBytes); err != nil {
+			return nil, fmt.Errorf("scan document id: %w", err)
+		}
+
+		id, err := bytesToUUID(idBytes)
+		if err != nil {
+			return nil, fmt.Errorf("decode document id: %w", err)
+		}
+
+		documentIDs = append(documentIDs, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate author document ids: %w", err)
+	}
+
+	return documentIDs, nil
+}
+
+func (s *SQLiteStorage) GetDocumentsByCreator(
+	ctx context.Context,
+	creator string,
+) ([]uuid.UUID, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id
+		FROM documents
+		WHERE lower(trim(creator)) = lower(trim(?))
+	`, creator)
+	if err != nil {
+		return nil, fmt.Errorf("get documents by creator: %w", err)
+	}
+	defer rows.Close()
+
+	var documentIDs []uuid.UUID
+
+	for rows.Next() {
+		var idBytes []byte
+
+		if err := rows.Scan(&idBytes); err != nil {
+			return nil, fmt.Errorf("scan document id: %w", err)
+		}
+
+		id, err := bytesToUUID(idBytes)
+		if err != nil {
+			return nil, fmt.Errorf("decode document id: %w", err)
+		}
+
+		documentIDs = append(documentIDs, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate creator document ids: %w", err)
+	}
+
+	return documentIDs, nil
 }

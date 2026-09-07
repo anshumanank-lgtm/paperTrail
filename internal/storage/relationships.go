@@ -17,6 +17,8 @@ func (s *SQLiteStorage) CreateRelationship(
 	relationshipType string,
 	confidence *float64,
 ) (uuid.UUID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if documentA == uuid.Nil || documentB == uuid.Nil {
 		return uuid.Nil, fmt.Errorf("document IDs cannot be nil")
 	}
@@ -103,6 +105,8 @@ func (s *SQLiteStorage) AttachEntityToRelationship(
 	relationshipID uuid.UUID,
 	entityID uuid.UUID,
 ) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, err := s.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO relationship_entities (
 			relationship_id,

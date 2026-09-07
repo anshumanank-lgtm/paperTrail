@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -13,12 +14,23 @@ import (
 
 type SQLiteStorage struct {
 	db *sql.DB
+	mu sync.Mutex
 }
 
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite database: %w", err)
+	}
+
+	_, err = db.Exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA synchronous = NORMAL;
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("configure sqlite: %w", err)
 	}
 
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {

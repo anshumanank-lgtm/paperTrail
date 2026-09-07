@@ -16,6 +16,8 @@ func (s *SQLiteStorage) GetOrCreateEntity(
 	ctx context.Context,
 	entity document.Entity,
 ) (uuid.UUID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	normalizedValue := normalizeEntityValue(entity.Value)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
@@ -80,6 +82,8 @@ func (s *SQLiteStorage) AttachEntityToDocument(
 	entityID uuid.UUID,
 	role string,
 ) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, err := s.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO document_entities (
 			document_id,
