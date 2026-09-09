@@ -1,60 +1,94 @@
-# PaperTrail v0.1
+# PaperTrail
 
 PaperTrail is a privacy-first personal document archive engine.
 
 It scans local documents, extracts their content, understands them using local intelligence, and builds a normalized local index.
 
-The product is **local-first and desktop-first**, with Windows as the initial target. Original files remain the source of truth; PaperTrail stores derived metadata, indexes, entities, and relationships locally.
+PaperTrail is **local-first and desktop-first**. The current development/runtime environment is Linux/Unix; Windows is the target platform for v0.2 bundling. Original files remain the source of truth; PaperTrail stores derived metadata, indexes, entities, and relationships locally.
 
 ## 1. Design
 
-### Core engine
+PaperTrail separates document ingestion, intelligence, storage, and search.
 
-The core engine is format-independent and sits above the filesystem:
+### Core architecture
 
+```text
+                ┌─────────────┐
+                │    Folder   │
+                └──────┬──────┘
+                       ↓
+                ┌─────────────┐
+                │   Scanner   │
+                └──────┬──────┘
+                       ↓
+                ┌─────────────┐
+                │   Pipeline  │
+                └──────┬──────┘
+                       ↓
+                ┌─────────────┐
+                │  Converter  │
+                └──────┬──────┘
+                       ↓
+                ┌─────────────┐
+                │   SQLite    │
+                │   Document  │
+                └──────┬──────┘
+                       │
+                       ↓
+              ┌─────────────────┐
+              │ Intelligence    │
+              │ Queue / Worker  │
+              └────────┬────────┘
+                       ↓
+                ┌─────────────┐
+                │   GLiNER2   │
+                │   (Python)  │
+                └──────┬──────┘
+                       ↓
+                ┌─────────────┐
+                │    Go       │
+                │  Metadata + │
+                │  Relations  │
+                └──────┬──────┘
+                       ↓
+                    SQLite
 ```
-Folder
-  ↓
-Scanner
-  ↓
-Pipeline / Worker Pool
-  ↓
-Converter
-  ↓
-ExtractedContent
-  ↓
-Metadata / Intelligence
-  ↓
-Normalized Document
-  ↓
-SQLite Index
+
+### Document flow
+
+* Scanner detects new, modified, and deleted files.
+* Converter produces `ExtractedContent`.
+* A basic document is persisted immediately.
+* Intelligence runs asynchronously and updates derived metadata and entities.
+* Relationships are rebuilt after intelligence completes.
+
+### Storage
+
+SQLite stores the local index:
+
+* Documents
+* Entities
+* Document ↔ entity mappings
+* Relationships
+* Intelligence/indexing state
+
+Original files remain the source of truth.
+
+### Search
+
+```text
+UI / CLI
+   ↓
+Search Service
+   ↓
+SQLite
 ```
 
-### Pipeline / worker pool
+The search layer handles query routing; storage handles SQL.
 
-The `pipeline` package owns orchestration. It uses a fan-out/fan-in worker pool so multiple documents can be processed concurrently, with `maxWorkers` controlling concurrency.
+### UI
 
-### Document normalization
-
-Converters turn supported files into `ExtractedContent`. The domain layer represents each file as a normalized `Document`, separating filesystem metadata from document metadata.
-
-### Metadata / intelligence
-
-The intelligence layer classifies document types and extracts entities using local ML. Go owns the domain model and confidence thresholds; Python runs GLiNER2 through a local gRPC service.
-
-GLiNER2 is initialized once when the intelligence server starts and supports long-document extraction through chunking and overlap handling.
-
-### SQLite storage
-
-SQLite stores the derived document index, including documents, entities, and relationships. The filesystem remains the source of truth.
-
-### Entity + relationship model
-
-Documents contain typed entities such as people, organisations, locations, dates, money, products, vehicles, addresses, and IDs.
-
-Entities are normalized and deduplicated in storage. A `document_entities` mapping connects documents to canonical entities, allowing the UI and relationship engine to navigate from a document to its entities and from an entity to related documents.
-
-Relationships are derived from meaningful shared entities and document metadata such as author/creator, providing explainable connections between documents.
+The current Fyne UI is a simple inspection/demo tool for search, document metadata, extracted information, and related documents.
 
 ## 2. Intelligence Architecture
 
@@ -78,9 +112,11 @@ Turns raw document text into structured, searchable information, kept as a repla
 
 ### Prerequisites
 
-* Go
+* Go 1.27.1
 * Python 3
 * Python virtual environment support (`python3-venv`)
+
+PaperTrail currently targets Linux/Unix for development. Windows packaging is planned for v0.2.
 
 ### Setup
 
@@ -89,6 +125,8 @@ make setup
 ```
 
 Creates `.venv` and installs dependencies from `internal/intelligence/requirements.txt`.
+
+The first startup downloads/caches the configured GLiNER2 model if it is not already available locally. This requires network access and additional local disk space; subsequent starts use the cached model but still incur model loading time.
 
 ### Build
 
@@ -100,10 +138,13 @@ Binary is created at `bin/papertrail`.
 
 ### Run / Scan
 
+The current executable launches the Fyne inspection UI and takes the folder to index as its argument:
+
 ```
 make run ARGS=./test
-make scan ARGS=./test   # alias
 ```
+
+`make scan` is an alias for the same command.
 
 ### Tests & Static Analysis
 
@@ -121,27 +162,36 @@ make deep-clean   # also removes .venv; re-run `make setup && make build` after
 
 ## 4. Supported Formats
 
-Currently converted: **TXT, PDF**
+Currently converted: **TXT, PDF**. PDF support currently extracts embedded text; scanned/image-only PDFs require OCR, which is not yet included.
 
 Recognized but not yet converted (planned for v0.2): DOC, DOCX, XLS, XLSX, PPT, PPTX
 
 All converters feed the same pipeline: `ExtractedContent → Intelligence → Document → SQLite`
 
-## 5. v0.1 — Achieved
+## 5. v0.1 — Complete
+
+v0.1 establishes the core local document intelligence engine and search foundation.
 
 * Format-independent scanning with concurrent fan-out/fan-in pipeline
-* TXT and PDF converters, with PDF Author/Creator metadata extraction
+* TXT and PDF conversion, including PDF Author/Creator metadata extraction
 * Normalized document model persisted to SQLite
-* Go ↔ Python gRPC intelligence service running GLiNER2, with type classification, confidence thresholds, and chunked/overlap-aware long-document entity extraction
-* Canonical entity storage with normalization, deduplication, and document↔entity mapping
-* Entity- and metadata-derived document relationships (shared org/product/ID/event/address/person/author), prioritized in related-document results
-* Reliability foundations: SQLite WAL mode, protected concurrent writes, foreign keys with cascading cleanup, lookup indexes, graceful shutdown, pipeline error handling, tests/lint setup, and 5-worker performance validation
+* Go ↔ Python gRPC intelligence service running GLiNER2
+* Document title extraction and document-type classification
+* Confidence-based intelligence filtering
+* Long-document extraction using GLiNER2 `extract_long()` with overlap handling
+* Canonical entity storage, normalization, deduplication, and document↔entity mapping
+* Explainable document relationships derived from shared entities and metadata
+* Incremental indexing with file fingerprinting and detection of new, modified, and deleted files
+* Two-phase persistence with asynchronous intelligence processing
+* Search across filename, date, author, creator, extracted intelligence/entities, and file type
+* Simple Fyne-based search/inspection UI showing metadata, extracted information, and related documents
+* SQLite WAL, protected writes, foreign keys, indexes, graceful shutdown, and pipeline error handling
 
-## 6. v0.2 — Persistent Archive + Product Foundation
+## 6. v0.2 — Intelligence + Packaging
 
-* **Continuous indexing** — fingerprinting and incremental scans to detect new/modified/deleted files without reprocessing unchanged ones; long-running scanner with configurable interval and error resilience
-* **Additional converters** — DOC, DOCX, XLS, XLSX, PPT, PPTX, feeding the existing pipeline
-* **Intelligence/search improvements** — driven by real-document testing: better entity resolution, relationship semantics, and structured queries (date, amount/range, etc.) as needed
-* **Local summarization research** — find the smallest viable local summarization model (e.g. FLAN-T5-small), tested on real documents, before deciding between indexed vs. on-demand summaries; no persistent `summary` field until then
-* **Product foundation** — stable backend/API contract for the UI, remaining data-model fixes, and reliability/resource-usage testing
+The next release focuses on expanding PaperTrail beyond the v0.1 core.
+
+* **Additional file types** — DOC, DOCX, XLS, XLSX, PPT, PPTX, feeding the existing conversion and intelligence pipeline
+* **LLM integration** — add an LLM layer for document Q&A, summaries, multi-document questions, comparisons, and Ask PaperTrail while keeping local retrieval and intelligence as the foundation
+* **Windows bundling** — package the Go application, Python runtime/dependencies, and required ML assets so PaperTrail can run on Windows without manual Python/virtual-environment setup
 
