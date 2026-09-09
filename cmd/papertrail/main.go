@@ -16,7 +16,9 @@ import (
 	"papertrail/internal/metadata"
 	"papertrail/internal/pipeline"
 	"papertrail/internal/relationship"
+	"papertrail/internal/search"
 	"papertrail/internal/storage"
+	"papertrail/internal/ui"
 	"papertrail/logger"
 )
 
@@ -42,7 +44,6 @@ func main() {
 		log.Error("failed to start Python intelligence server: %v", err)
 		return
 	}
-
 	defer func() {
 		if err := pythonServer.Stop(); err != nil {
 			log.Error("failed to stop Python intelligence server: %v", err)
@@ -82,12 +83,12 @@ func main() {
 		5,
 	)
 
-	start := time.Now()
+	go func() {
+		if err := p.Run(ctx, []string{os.Args[1]}, 2*time.Minute); err != nil {
+			log.Error("pipeline stopped: %v", err)
+		}
+	}()
 
-	if err := p.Run(os.Args[1]); err != nil {
-		log.Error("%v", err)
-		return
-	}
-
-	log.Info("Completed in %v", time.Since(start))
+	searchService := search.NewService(sqliteStorage)
+	ui.New(searchService, ctx, cancel).Run()
 }

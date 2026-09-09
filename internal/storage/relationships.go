@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,7 +36,7 @@ func (s *SQLiteStorage) CreateRelationship(
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
-	var relationshipID uuid.UUID
+	var relationshipIDBytes []byte
 
 	// Check whether the relationship already exists.
 	err := s.db.QueryRowContext(ctx, `
@@ -47,9 +49,13 @@ func (s *SQLiteStorage) CreateRelationship(
 		uuidToBytes(documentA),
 		uuidToBytes(documentB),
 		relationshipType,
-	).Scan(&relationshipID)
+	).Scan(&relationshipIDBytes)
 
 	if err == nil {
+		relationshipID, decodeErr := bytesToUUID(relationshipIDBytes)
+		if decodeErr != nil {
+			return uuid.Nil, fmt.Errorf("decode relationship id: %w", decodeErr)
+		}
 		_, err = s.db.ExecContext(ctx, `
 			UPDATE document_relationships
 			SET confidence = ?,
@@ -67,11 +73,11 @@ func (s *SQLiteStorage) CreateRelationship(
 		return relationshipID, nil
 	}
 
-	if err != nil && err.Error() != "sql: no rows in result set" {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, fmt.Errorf("check relationship: %w", err)
 	}
 
-	relationshipID = uuid.New()
+	relationshipID := uuid.New()
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO document_relationships (
@@ -124,6 +130,24 @@ func (s *SQLiteStorage) AttachEntityToRelationship(
 	return nil
 }
 
+func (s *SQLiteStorage) DeleteDocumentRelationships(
+	ctx context.Context,
+	documentID uuid.UUID,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM document_relationships
+		WHERE document_id_a = ?
+		   OR document_id_b = ?
+	`, uuidToBytes(documentID), uuidToBytes(documentID))
+	if err != nil {
+		return fmt.Errorf("delete document relationships: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStorage) GetDocumentRelationships(
 	ctx context.Context,
 	documentID uuid.UUID,
@@ -146,7 +170,6 @@ func (s *SQLiteStorage) GetDocumentRelationships(
 	if err != nil {
 		return nil, fmt.Errorf("get document relationships: %w", err)
 	}
-	defer rows.Close()
 
 	var relationships []DocumentRelationship
 
@@ -165,39 +188,52 @@ func (s *SQLiteStorage) GetDocumentRelationships(
 			&relationship.RelationshipType,
 			&relationship.Confidence,
 		); err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("scan relationship: %w", err)
 		}
 
 		relationship.ID, err = bytesToUUID(relationshipID)
 		if err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("decode relationship ID: %w", err)
 		}
 
 		relationship.DocumentA, err = bytesToUUID(documentA)
 		if err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("decode document A ID: %w", err)
 		}
 
 		relationship.DocumentB, err = bytesToUUID(documentB)
 		if err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("decode document B ID: %w", err)
 		}
-
-		entities, err := s.getRelationshipEntities(
-			ctx,
-			relationship.ID,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		relationship.Entities = entities
 
 		relationships = append(relationships, relationship)
 	}
 
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, fmt.Errorf("iterate relationships: %w", err)
+	}
+
+	// Important: release the SQLite connection before issuing
+	// additional queries for relationship entities.
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close relationship rows: %w", err)
+	}
+
+	for i := range relationships {
+		entities, err := s.getRelationshipEntities(
+			ctx,
+			relationships[i].ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		relationships[i].Entities = entities
 	}
 
 	return relationships, nil

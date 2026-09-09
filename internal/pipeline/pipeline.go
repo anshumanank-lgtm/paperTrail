@@ -2,16 +2,14 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"path/filepath"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
 	"papertrail/internal/converter"
-	"papertrail/internal/document"
 	"papertrail/internal/metadata"
 	"papertrail/internal/relationship"
 	"papertrail/internal/scanner"
@@ -26,11 +24,10 @@ type Pipeline struct {
 	relationships *relationship.Engine
 	logger        *logger.Logger
 	workers       int
-}
 
-type processedDocument struct {
-	ID  uuid.UUID
-	Doc document.Document
+	intelligenceQueue chan intelligenceJob
+	pendingMu         sync.Mutex
+	pending           map[uuid.UUID]string
 }
 
 func New(
@@ -42,337 +39,166 @@ func New(
 	workers int,
 ) *Pipeline {
 	return &Pipeline{
-		converter:     converter,
-		metadata:      metadata,
-		storage:       storage,
-		relationships: relationships,
-		logger:        logger,
-		workers:       workers,
+		converter:         converter,
+		metadata:          metadata,
+		storage:           storage,
+		relationships:     relationships,
+		logger:            logger,
+		workers:           workers,
+		intelligenceQueue: make(chan intelligenceJob, 32),
+		pending:           make(map[uuid.UUID]string),
 	}
 }
 
-func (p *Pipeline) Run(folderPath string) error {
-	ctx := context.Background()
-
-	p.logger.Info("Starting pipeline")
-	p.logger.Info("Scanning folder: %s", folderPath)
-
-	files, err := scanner.Scan(folderPath)
-	if err != nil {
-		return fmt.Errorf("scan folder: %w", err)
+// Run owns the long-running pipeline lifecycle. A cycle scans and ingests files;
+// intelligence processing runs independently through the bounded async queue.
+func (p *Pipeline) Run(ctx context.Context, folderPaths []string, interval time.Duration) error {
+	if len(folderPaths) == 0 {
+		return fmt.Errorf("no folders configured")
+	}
+	if interval <= 0 {
+		return fmt.Errorf("invalid scan interval: %s", interval)
 	}
 
+	p.logger.Info("Starting continuous pipeline")
+	for _, folderPath := range folderPaths {
+		p.logger.Info("Configured folder: %s", folderPath)
+	}
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var workerDone = make(chan struct{})
+	go func() {
+		p.runIntelligenceWorker(workerCtx)
+		close(workerDone)
+	}()
+
+	defer func() { <-workerDone }()
+
+	if err := p.runCycle(ctx, folderPaths); err != nil && !errors.Is(err, context.Canceled) {
+		p.logger.Error("Pipeline cycle failed: %v", err)
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			p.logger.Info("Pipeline shutdown requested")
+			return nil
+		case <-ticker.C:
+			if err := p.runCycle(ctx, folderPaths); err != nil {
+				if errors.Is(err, context.Canceled) {
+					p.logger.Info("Pipeline shutdown requested")
+					return nil
+				}
+				p.logger.Error("Pipeline cycle failed: %v", err)
+			}
+		}
+	}
+}
+
+// runCycle owns one scan/index pass. It deliberately does not wait for ML
+// intelligence; documents are persisted first and intelligence is queued.
+func (p *Pipeline) runCycle(ctx context.Context, folderPaths []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	p.logger.Info("Starting pipeline cycle")
+
+	files, err := p.scanFolders(ctx, folderPaths)
+	if err != nil {
+		return err
+	}
+
+	files = deduplicateFiles(files)
 	p.logger.Info("Found %d supported files", len(files))
 
-	processed, err := p.processFiles(ctx, files)
+	if err := p.deleteMissingDocuments(ctx, folderPaths, files); err != nil {
+		return fmt.Errorf("delete missing documents: %w", err)
+	}
+
+	filesToProcess, err := p.detectChanges(ctx, files)
+	if err != nil {
+		return fmt.Errorf("detect changes: %w", err)
+	}
+
+	p.logger.Info("Found %d new or modified files", len(filesToProcess))
+
+	jobs, err := p.ingestFiles(ctx, filesToProcess)
 	if err != nil {
 		return err
 	}
 
-	p.logger.Info("Processed %d documents", len(processed))
-
-	if err := p.createRelationships(ctx, processed); err != nil {
-		return err
-	}
-
-	if sqliteStorage, ok := p.storage.(*storage.SQLiteStorage); ok {
-		if err := sqliteStorage.DumpTables(ctx); err != nil {
-			return fmt.Errorf("dump SQLite tables: %w", err)
+	for _, job := range jobs {
+		if err := p.enqueueIntelligence(ctx, job); err != nil {
+			return fmt.Errorf("enqueue intelligence for %s: %w", job.FileName, err)
 		}
 	}
 
-	p.logger.Info("Pipeline completed")
-
+	p.logger.Info("Pipeline cycle completed: %d documents queued for intelligence", len(jobs))
 	return nil
 }
 
-func (p *Pipeline) processFiles(
-	ctx context.Context,
-	files []scanner.DocumentFile,
-) ([]processedDocument, error) {
-	p.logger.Info(
-		"Starting worker pool with %d workers",
-		p.workers,
-	)
+func (p *Pipeline) scanFolders(ctx context.Context, folderPaths []string) ([]scanner.DocumentFile, error) {
+	var files []scanner.DocumentFile
+	for _, folderPath := range folderPaths {
+		p.logger.Info("Scanning folder: %s", folderPath)
+		folderFiles, err := scanner.Scan(ctx, folderPath)
+		if err != nil {
+			return nil, fmt.Errorf("scan folder %q: %w", folderPath, err)
+		}
+		files = append(files, folderFiles...)
+	}
+	return files, nil
+}
 
-	jobs := make(chan scanner.DocumentFile)
-	results := make(chan processedDocument)
+func (p *Pipeline) enqueueIntelligence(ctx context.Context, job intelligenceJob) error {
+	p.pendingMu.Lock()
+	if fingerprint, exists := p.pending[job.DocumentID]; exists && fingerprint == job.Fingerprint {
+		p.pendingMu.Unlock()
+		return nil
+	}
+	p.pending[job.DocumentID] = job.Fingerprint
+	p.pendingMu.Unlock()
 
-	var wg sync.WaitGroup
+	select {
+	case p.intelligenceQueue <- job:
+		return nil
+	case <-ctx.Done():
+		p.releaseIntelligenceJob(job)
+		return ctx.Err()
+	}
+}
 
-	for i := 0; i < p.workers; i++ {
-		workerID := i + 1
+func (p *Pipeline) releaseIntelligenceJob(job intelligenceJob) {
+	p.pendingMu.Lock()
+	defer p.pendingMu.Unlock()
+	if fingerprint, exists := p.pending[job.DocumentID]; exists && fingerprint == job.Fingerprint {
+		delete(p.pending, job.DocumentID)
+	}
+}
 
-		wg.Add(1)
+func (p *Pipeline) runIntelligenceWorker(ctx context.Context) {
+	p.logger.Info("Intelligence worker started")
+	defer p.logger.Info("Intelligence worker stopped")
 
-		go func() {
-			defer wg.Done()
-
-			p.logger.Info(
-				"Worker %d started",
-				workerID,
-			)
-
-			for file := range jobs {
-				p.logger.Info(
-					"Worker %d processing: %s",
-					workerID,
-					file.Filename,
-				)
-
-				result, err := p.processFile(ctx, file)
-				if err != nil {
-					p.logger.Error(
-						"Worker %d failed processing %q: %v",
-						workerID,
-						file.Filename,
-						err,
-					)
-					continue
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-p.intelligenceQueue:
+			err := p.processIntelligence(ctx, job)
+			p.releaseIntelligenceJob(job)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return
 				}
-
-				results <- result
-
-				p.logger.Info(
-					"Worker %d completed: %s",
-					workerID,
-					file.Filename,
-				)
+				p.logger.Error("Intelligence failed for %q: %v", job.FileName, err)
 			}
-
-			p.logger.Info(
-				"Worker %d stopped",
-				workerID,
-			)
-		}()
-	}
-
-	go func() {
-		defer close(jobs)
-
-		for _, file := range files {
-			jobs <- file
 		}
-	}()
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	var processed []processedDocument
-
-	for result := range results {
-		processed = append(processed, result)
-	}
-
-	return processed, nil
-}
-
-func (p *Pipeline) processFile(
-	ctx context.Context,
-	file scanner.DocumentFile,
-) (processedDocument, error) {
-	p.logger.Info(
-		"Converting: %s",
-		file.Filename,
-	)
-
-	content, err := p.converter.Convert(file)
-	if err != nil {
-		return processedDocument{}, fmt.Errorf(
-			"convert: %w",
-			err,
-		)
-	}
-
-	p.logger.Info(
-		"Extracting metadata: %s",
-		file.Filename,
-	)
-
-	docMetadata, err := p.metadata.Extract(content)
-	if err != nil {
-		p.logger.Error("metadata extraction failed", "path", file.AbsolutePath, "error", err)
-		return processedDocument{}, fmt.Errorf(
-			"extract metadata: %w",
-			err,
-		)
-	}
-
-	if docMetadata.Title == "" {
-		docMetadata.Title = strings.TrimSuffix(
-			file.Filename,
-			filepath.Ext(file.Filename),
-		)
-	}
-
-	doc := document.Document{
-		ID: uuid.New(),
-		FileMetadata: document.FileMetadata{
-			SourcePath: file.AbsolutePath,
-			Filename:   file.Filename,
-			Extension:  file.Extension,
-			Size:       file.Size,
-			ModifiedAt: file.ModifiedAt,
-			Author:     content.Author,
-			Creator:    content.Creator,
-		},
-		DocumentMetadata: docMetadata,
-	}
-
-	p.logger.Info(
-		"Storing document: %s",
-		file.Filename,
-	)
-
-	documentID, err := p.storage.CreateDocument(
-		ctx,
-		doc,
-		"",
-	)
-	if err != nil {
-		return processedDocument{}, fmt.Errorf(
-			"store document: %w",
-			err,
-		)
-	}
-
-	p.logger.Info(
-		"Stored document %s with ID %s",
-		file.Filename,
-		documentID,
-	)
-
-	p.storeEntities(ctx, documentID, &doc)
-
-	return processedDocument{
-		ID:  documentID,
-		Doc: doc,
-	}, nil
-}
-
-func (p *Pipeline) storeEntities(
-	ctx context.Context,
-	documentID uuid.UUID,
-	doc *document.Document,
-) {
-	for i := range doc.DocumentMetadata.Entities {
-		entity := &doc.DocumentMetadata.Entities[i]
-
-		if !shouldStoreEntity(entity.Type) {
-			continue
-		}
-
-		entityID, err := p.storage.GetOrCreateEntity(
-			ctx,
-			*entity,
-		)
-		if err != nil {
-			p.logger.Error(
-				"Failed to store entity %q: %v",
-				entity.Value,
-				err,
-			)
-			continue
-		}
-
-		entity.ID = entityID
-
-		if err := p.storage.AttachEntityToDocument(
-			ctx,
-			documentID,
-			entityID,
-			"",
-		); err != nil {
-			p.logger.Error(
-				"Failed to attach entity %q: %v",
-				entity.Value,
-				err,
-			)
-			continue
-		}
-	}
-}
-
-func (p *Pipeline) createRelationships(
-	ctx context.Context,
-	documents []processedDocument,
-) error {
-	p.logger.Info(
-		"Creating relationships between %d documents",
-		len(documents),
-	)
-
-	for _, processed := range documents {
-		p.logger.Info(
-			"Processing relationships for document %s: %s",
-			processed.ID,
-			processed.Doc.FileMetadata.Filename,
-		)
-
-		if err := p.relationships.ProcessDocument(
-			ctx,
-			processed.ID,
-		); err != nil {
-			return fmt.Errorf(
-				"create relationships for document %s: %w",
-				processed.ID,
-				err,
-			)
-		}
-	}
-
-	p.logger.Info("Relationship processing completed")
-
-	return nil
-}
-
-func (p *Pipeline) outputDocuments(
-	documents []processedDocument,
-) {
-	p.logger.Info(
-		"Outputting %d documents",
-		len(documents),
-	)
-
-	for _, processed := range documents {
-		data, err := json.MarshalIndent(
-			processed.Doc,
-			"",
-			"  ",
-		)
-		if err != nil {
-			p.logger.Error(
-				"Marshal document %s: %v",
-				processed.ID,
-				err,
-			)
-			continue
-		}
-
-		fmt.Println(string(data))
-	}
-}
-
-func shouldStoreEntity(entityType document.EntityType) bool {
-	switch entityType {
-	case
-		document.EntityTypePerson,
-		document.EntityTypeOrganisation,
-		document.EntityTypeProduct,
-		document.EntityTypeIDNumber,
-		document.EntityTypeEvent,
-		document.EntityTypeAddress,
-		document.EntityTypeVehicle,
-		document.EntityTypeLocation,
-		document.EntityTypeMoney,
-		document.EntityTypeDate,
-		document.EntityTypeEmail,
-		document.EntityTypePhoneNumber,
-		document.EntityTypeJobTitle:
-		return true
-	default:
-		return false
 	}
 }

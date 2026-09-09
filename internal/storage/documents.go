@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -38,10 +39,11 @@ func (s *SQLiteStorage) CreateDocument(
 			document_type,
 			author,
 			creator,
+			intelligence_status,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		uuidToBytes(id),
 		doc.FileMetadata.SourcePath,
@@ -54,6 +56,7 @@ func (s *SQLiteStorage) CreateDocument(
 		doc.DocumentMetadata.DocumentType,
 		doc.FileMetadata.Author,
 		doc.FileMetadata.Creator,
+		IntelligenceStatusPending,
 		now,
 		now,
 	)
@@ -151,6 +154,7 @@ func (s *SQLiteStorage) UpdateDocument(
 			document_type = ?,
 			author = ?,
 			creator = ?,
+			intelligence_status = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -164,6 +168,7 @@ func (s *SQLiteStorage) UpdateDocument(
 		doc.DocumentMetadata.DocumentType,
 		doc.FileMetadata.Author,
 		doc.FileMetadata.Creator,
+		IntelligenceStatusPending,
 		now,
 		uuidToBytes(id),
 	)
@@ -187,7 +192,21 @@ func (s *SQLiteStorage) DeleteDocument(
 	ctx context.Context,
 	id uuid.UUID,
 ) error {
-	result, err := s.db.ExecContext(ctx, `
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete document transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	entityIDs, err := queryDocumentEntityIDs(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+
+	result, err := tx.ExecContext(ctx, `
 		DELETE FROM documents
 		WHERE id = ?
 	`, uuidToBytes(id))
@@ -199,11 +218,25 @@ func (s *SQLiteStorage) DeleteDocument(
 	if err != nil {
 		return fmt.Errorf("check document deletion: %w", err)
 	}
-
 	if rows == 0 {
 		return fmt.Errorf("document not found: %s", id)
 	}
 
+	for _, entityID := range entityIDs {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM entities
+			WHERE id = ?
+			  AND NOT EXISTS (
+				SELECT 1 FROM document_entities WHERE entity_id = entities.id
+			  )
+		`, uuidToBytes(entityID)); err != nil {
+			return fmt.Errorf("cleanup orphan entity %s: %w", entityID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete document: %w", err)
+	}
 	return nil
 }
 
@@ -383,4 +416,117 @@ func (s *SQLiteStorage) GetDocumentsByCreator(
 	}
 
 	return documentIDs, nil
+}
+
+func (s *SQLiteStorage) UpdateDocumentIntelligence(
+	ctx context.Context,
+	id uuid.UUID,
+	metadata document.DocumentMetadata,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE documents
+		SET title = ?,
+		    document_type = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, metadata.Title, metadata.DocumentType, time.Now().UTC().Format(time.RFC3339Nano), uuidToBytes(id))
+	if err != nil {
+		return fmt.Errorf("update document intelligence: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check intelligence update: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("document not found: %s", id)
+	}
+	return nil
+}
+
+func (s *SQLiteStorage) SetDocumentIntelligenceStatus(
+	ctx context.Context,
+	id uuid.UUID,
+	status string,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE documents
+		SET intelligence_status = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, status, time.Now().UTC().Format(time.RFC3339Nano), uuidToBytes(id))
+	if err != nil {
+		return fmt.Errorf("update document intelligence status: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check intelligence status update: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("document not found: %s", id)
+	}
+	return nil
+}
+
+func (s *SQLiteStorage) GetDocumentIndexState(
+	ctx context.Context,
+	sourcePath string,
+) (*DocumentIndexState, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, size, modified_at, fingerprint, intelligence_status
+		FROM documents
+		WHERE source_path = ?
+	`, sourcePath)
+	return scanDocumentIndexState(row)
+}
+
+func (s *SQLiteStorage) GetDocumentIndexStateByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (*DocumentIndexState, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, size, modified_at, fingerprint, intelligence_status
+		FROM documents
+		WHERE id = ?
+	`, uuidToBytes(id))
+	return scanDocumentIndexState(row)
+}
+
+func scanDocumentIndexState(row interface{ Scan(...any) error }) (*DocumentIndexState, error) {
+	var (
+		idBytes            []byte
+		size               int64
+		modifiedAt         string
+		fingerprint        string
+		intelligenceStatus string
+	)
+
+	if err := row.Scan(&idBytes, &size, &modifiedAt, &fingerprint, &intelligenceStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get document index state: %w", err)
+	}
+
+	id, err := bytesToUUID(idBytes)
+	if err != nil {
+		return nil, fmt.Errorf("decode document id: %w", err)
+	}
+	parsedModifiedAt, err := time.Parse(time.RFC3339Nano, modifiedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse modified_at: %w", err)
+	}
+
+	return &DocumentIndexState{
+		ID:                 id,
+		Size:               size,
+		ModifiedAt:         parsedModifiedAt,
+		Fingerprint:        fingerprint,
+		IntelligenceStatus: intelligenceStatus,
+	}, nil
 }

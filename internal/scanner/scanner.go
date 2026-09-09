@@ -1,8 +1,10 @@
-// Package scanner discovers files and records their filesystem metadata.
 package scanner
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,6 +19,7 @@ type DocumentFile struct {
 	Extension    string
 	Size         int64
 	ModifiedAt   time.Time
+	Fingerprint  string
 }
 
 var supportedExtensions = map[string]struct{}{
@@ -30,9 +33,13 @@ var supportedExtensions = map[string]struct{}{
 	".pptx": {},
 }
 
-// Scan recursively discovers every file under folderPath. It does not read or
-// parse file contents.
-func Scan(folderPath string) ([]DocumentFile, error) {
+// Scan recursively discovers every supported file under folderPath.
+// It only reads filesystem metadata; file contents are not read.
+func Scan(ctx context.Context, folderPath string) ([]DocumentFile, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	info, err := os.Stat(folderPath)
 	if err != nil {
 		return nil, err
@@ -47,11 +54,20 @@ func Scan(folderPath string) ([]DocumentFile, error) {
 	}
 
 	var files []DocumentFile
+
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
+			return nil
+		}
+
+		extension := filepath.Ext(entry.Name())
+		if _, ok := supportedExtensions[strings.ToLower(extension)]; !ok {
 			return nil
 		}
 
@@ -60,10 +76,6 @@ func Scan(folderPath string) ([]DocumentFile, error) {
 			return err
 		}
 
-		extension := filepath.Ext(entry.Name())
-		if _, ok := supportedExtensions[strings.ToLower(extension)]; !ok {
-			return nil
-		}
 		files = append(files, DocumentFile{
 			AbsolutePath: path,
 			Filename:     entry.Name(),
@@ -71,6 +83,7 @@ func Scan(folderPath string) ([]DocumentFile, error) {
 			Size:         fileInfo.Size(),
 			ModifiedAt:   fileInfo.ModTime(),
 		})
+
 		return nil
 	})
 	if err != nil {
@@ -78,4 +91,43 @@ func Scan(folderPath string) ([]DocumentFile, error) {
 	}
 
 	return files, nil
+}
+
+// Fingerprint calculates the SHA-256 fingerprint of a file.
+// The file is read only when fingerprinting is explicitly requested.
+func Fingerprint(ctx context.Context, path string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	buffer := make([]byte, 32*1024)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+
+		n, err := file.Read(buffer)
+		if n > 0 {
+			if _, writeErr := hash.Write(buffer[:n]); writeErr != nil {
+				return "", writeErr
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

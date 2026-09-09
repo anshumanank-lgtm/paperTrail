@@ -23,7 +23,14 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("open SQLite database: %w", err)
 	}
 
+	// SQLite connection-scoped pragmas must be applied on the same connection
+	// used by subsequent queries. A single connection is appropriate for the
+	// local desktop database and keeps foreign-key cascades deterministic.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
 	_, err = db.Exec(`
+    PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
     PRAGMA busy_timeout = 5000;
     PRAGMA synchronous = NORMAL;
@@ -38,9 +45,48 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("initialize SQLite schema: %w", err)
 	}
 
+	if err := ensureDocumentIntelligenceStatus(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	return &SQLiteStorage{
 		db: db,
 	}, nil
+}
+
+func ensureDocumentIntelligenceStatus(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(documents)`)
+	if err != nil {
+		return fmt.Errorf("inspect documents schema: %w", err)
+	}
+	defer rows.Close()
+
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan documents schema: %w", err)
+		}
+		if name == "intelligence_status" {
+			found = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate documents schema: %w", err)
+	}
+	if found {
+		return nil
+	}
+
+	if _, err := db.Exec(`ALTER TABLE documents ADD COLUMN intelligence_status TEXT NOT NULL DEFAULT 'ready'`); err != nil {
+		return fmt.Errorf("add document intelligence status: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLiteStorage) Close() error {

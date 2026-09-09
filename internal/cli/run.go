@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,7 +19,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	files, err := scanner.Scan(args[0])
+	files, err := scanner.Scan(context.Background(), args[0])
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

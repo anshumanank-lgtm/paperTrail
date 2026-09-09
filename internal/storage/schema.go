@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS documents (
 
     author          TEXT,
     creator         TEXT,
+    intelligence_status TEXT NOT NULL DEFAULT 'ready',
 
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
