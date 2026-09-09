@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -13,6 +14,7 @@ const (
 	titleConfidenceThreshold        = 0.50
 	documentTypeConfidenceThreshold = 0.70
 	entityConfidenceThreshold       = 0.80
+	extractTimeout                  = 30 * time.Second
 )
 
 type GRPCMetadataEngine struct {
@@ -29,19 +31,25 @@ func NewGRPCMetadataEngine(
 
 func (e *GRPCMetadataEngine) Extract(
 	content document.ExtractedContent,
-) document.DocumentMetadata {
+) (document.DocumentMetadata, error) {
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		extractTimeout,
+	)
+	defer cancel()
 
 	response, err := e.client.Extract(
-		context.Background(),
+		ctx,
 		&intelligencepb.ExtractRequest{
 			Text: content.Text,
 		},
 	)
 	if err != nil {
-		panic(err)
+		return document.DocumentMetadata{}, err
 	}
 
-	return mapMetadata(response)
+	return mapMetadata(response), nil
 }
 
 func mapMetadata(

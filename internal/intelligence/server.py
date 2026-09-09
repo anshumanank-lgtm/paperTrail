@@ -80,10 +80,10 @@ def serve():
         server,
     )
 
-    server.add_insecure_port("[::]:50051")
+    server.add_insecure_port("127.0.0.1:50051")
     server.start()
 
-    print("Intelligence gRPC server ready on :50051")
+    print("Intelligence gRPC server ready on 127.0.0.1:50051", flush=True)
 
     def shutdown(signum, frame):
         print(

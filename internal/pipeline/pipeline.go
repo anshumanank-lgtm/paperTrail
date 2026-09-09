@@ -191,7 +191,14 @@ func (p *Pipeline) processFile(
 		file.Filename,
 	)
 
-	docMetadata := p.metadata.Extract(content)
+	docMetadata, err := p.metadata.Extract(content)
+	if err != nil {
+		p.logger.Error("metadata extraction failed", "path", file.AbsolutePath, "error", err)
+		return processedDocument{}, fmt.Errorf(
+			"extract metadata: %w",
+			err,
+		)
+	}
 
 	if docMetadata.Title == "" {
 		docMetadata.Title = strings.TrimSuffix(
