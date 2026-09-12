@@ -35,6 +35,8 @@ flowchart LR
 Only the retrieved context required to answer an `ask` request is sent to OpenAI.
 The original archive is never uploaded.
 
+<img width="953" height="456" alt="Screenshot 2026-09-13 013346" src="https://github.com/user-attachments/assets/e66b25e2-9c86-4022-82ff-1f9806ea6326" />
+
 ---
 
 ## 1. Current implementation overview
