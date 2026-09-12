@@ -657,17 +657,7 @@ The backend process:
 6. starts the Unix-socket controller
 7. remains attached to the terminal for backend, pipeline, and ML logs
 
-### Step 6: open the CLI
-
-Open a second terminal and run:
-
-```bash
-./bin/papertrail --cli
-```
-
-The CLI connects to the running backend through the Unix socket.
-
-### Step 7: index a folder
+### Step 6: index a folder
 
 Inside the CLI:
 
@@ -677,7 +667,7 @@ add <folder>
 
 Adding a folder immediately triggers a scan of that folder.
 
-### Step 8: inspect the index
+### Step 7: inspect the index
 
 ```text
 folders
@@ -687,7 +677,7 @@ document <uuid>
 entity <uuid>
 ```
 
-### Step 9: ask a question
+### Step 8: ask a question
 
 ```text
 ask <question>
@@ -709,7 +699,7 @@ OpenAI Responses API
 grounded answer
 ```
 
-### Step 10: stop PaperTrail
+### Step 9: stop PaperTrail
 
 From the CLI:
 
@@ -734,17 +724,13 @@ make build
 make start
 ```
 
-Then, in a second terminal:
-
-```bash
-./bin/papertrail --cli
-```
-
 Then:
 
 ```text
 add /path/to/documents
 documents
+document <id>
+help
 ask What documents mention the same organisation as this contract?
 ```
 
@@ -821,7 +807,6 @@ separate persistent configuration store.
 - graphical UI
 - persistent watched-folder configuration
 - richer hybrid retrieval combining structured filters with semantic retrieval
-- production packaging of the complete Go + Python + model runtime
 - scalable vector indexing for very large archives
 
 ---
@@ -850,12 +835,6 @@ The next improvements should build on the current architecture rather than repla
 - richer document and entity views
 - better backend/indexing status visibility
 - persistent folder configuration
-
-### Packaging
-
-- bundle the Go executable, Python runtime, dependencies, and ML assets
-- provide platform-specific installation for Linux, WSL, and Windows
-- reduce first-run setup complexity
 
 ### Operational maturity
 
