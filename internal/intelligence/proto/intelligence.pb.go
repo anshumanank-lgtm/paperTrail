@@ -369,6 +369,138 @@ func (x *Entity) GetConfidence() float32 {
 	return 0
 }
 
+type EmbedRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Texts         []string               `protobuf:"bytes,1,rep,name=texts,proto3" json:"texts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EmbedRequest) Reset() {
+	*x = EmbedRequest{}
+	mi := &file_internal_intelligence_proto_intelligence_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmbedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmbedRequest) ProtoMessage() {}
+
+func (x *EmbedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_intelligence_proto_intelligence_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmbedRequest.ProtoReflect.Descriptor instead.
+func (*EmbedRequest) Descriptor() ([]byte, []int) {
+	return file_internal_intelligence_proto_intelligence_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *EmbedRequest) GetTexts() []string {
+	if x != nil {
+		return x.Texts
+	}
+	return nil
+}
+
+type EmbedResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Embeddings    []*Embedding           `protobuf:"bytes,1,rep,name=embeddings,proto3" json:"embeddings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EmbedResponse) Reset() {
+	*x = EmbedResponse{}
+	mi := &file_internal_intelligence_proto_intelligence_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmbedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmbedResponse) ProtoMessage() {}
+
+func (x *EmbedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_intelligence_proto_intelligence_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmbedResponse.ProtoReflect.Descriptor instead.
+func (*EmbedResponse) Descriptor() ([]byte, []int) {
+	return file_internal_intelligence_proto_intelligence_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *EmbedResponse) GetEmbeddings() []*Embedding {
+	if x != nil {
+		return x.Embeddings
+	}
+	return nil
+}
+
+type Embedding struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []float32              `protobuf:"fixed32,1,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Embedding) Reset() {
+	*x = Embedding{}
+	mi := &file_internal_intelligence_proto_intelligence_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Embedding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Embedding) ProtoMessage() {}
+
+func (x *Embedding) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_intelligence_proto_intelligence_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Embedding.ProtoReflect.Descriptor instead.
+func (*Embedding) Descriptor() ([]byte, []int) {
+	return file_internal_intelligence_proto_intelligence_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Embedding) GetValues() []float32 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
 var File_internal_intelligence_proto_intelligence_proto protoreflect.FileDescriptor
 
 const file_internal_intelligence_proto_intelligence_proto_rawDesc = "" +
@@ -394,11 +526,20 @@ const file_internal_intelligence_proto_intelligence_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1e\n" +
 	"\n" +
 	"confidence\x18\x03 \x01(\x02R\n" +
-	"confidence2\xf9\x01\n" +
+	"confidence\"$\n" +
+	"\fEmbedRequest\x12\x14\n" +
+	"\x05texts\x18\x01 \x03(\tR\x05texts\"H\n" +
+	"\rEmbedResponse\x127\n" +
+	"\n" +
+	"embeddings\x18\x01 \x03(\v2\x17.intelligence.EmbeddingR\n" +
+	"embeddings\"#\n" +
+	"\tEmbedding\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\x02R\x06values2\xbb\x02\n" +
 	"\x13IntelligenceService\x12C\n" +
 	"\x06Health\x12\x1b.intelligence.HealthRequest\x1a\x1c.intelligence.HealthResponse\x12F\n" +
 	"\aExtract\x12\x1c.intelligence.ExtractRequest\x1a\x1d.intelligence.ExtractResponse\x12U\n" +
-	"\fExtractBatch\x12!.intelligence.ExtractBatchRequest\x1a\".intelligence.ExtractBatchResponseB7Z5papertrail/internal/intelligence/proto;intelligencepbb\x06proto3"
+	"\fExtractBatch\x12!.intelligence.ExtractBatchRequest\x1a\".intelligence.ExtractBatchResponse\x12@\n" +
+	"\x05Embed\x12\x1a.intelligence.EmbedRequest\x1a\x1b.intelligence.EmbedResponseB7Z5papertrail/internal/intelligence/proto;intelligencepbb\x06proto3"
 
 var (
 	file_internal_intelligence_proto_intelligence_proto_rawDescOnce sync.Once
@@ -412,7 +553,7 @@ func file_internal_intelligence_proto_intelligence_proto_rawDescGZIP() []byte {
 	return file_internal_intelligence_proto_intelligence_proto_rawDescData
 }
 
-var file_internal_intelligence_proto_intelligence_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_internal_intelligence_proto_intelligence_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_internal_intelligence_proto_intelligence_proto_goTypes = []any{
 	(*HealthRequest)(nil),        // 0: intelligence.HealthRequest
 	(*HealthResponse)(nil),       // 1: intelligence.HealthResponse
@@ -421,22 +562,28 @@ var file_internal_intelligence_proto_intelligence_proto_goTypes = []any{
 	(*ExtractBatchResponse)(nil), // 4: intelligence.ExtractBatchResponse
 	(*ExtractResponse)(nil),      // 5: intelligence.ExtractResponse
 	(*Entity)(nil),               // 6: intelligence.Entity
+	(*EmbedRequest)(nil),         // 7: intelligence.EmbedRequest
+	(*EmbedResponse)(nil),        // 8: intelligence.EmbedResponse
+	(*Embedding)(nil),            // 9: intelligence.Embedding
 }
 var file_internal_intelligence_proto_intelligence_proto_depIdxs = []int32{
 	2, // 0: intelligence.ExtractBatchRequest.documents:type_name -> intelligence.ExtractRequest
 	5, // 1: intelligence.ExtractBatchResponse.documents:type_name -> intelligence.ExtractResponse
 	6, // 2: intelligence.ExtractResponse.entities:type_name -> intelligence.Entity
-	0, // 3: intelligence.IntelligenceService.Health:input_type -> intelligence.HealthRequest
-	2, // 4: intelligence.IntelligenceService.Extract:input_type -> intelligence.ExtractRequest
-	3, // 5: intelligence.IntelligenceService.ExtractBatch:input_type -> intelligence.ExtractBatchRequest
-	1, // 6: intelligence.IntelligenceService.Health:output_type -> intelligence.HealthResponse
-	5, // 7: intelligence.IntelligenceService.Extract:output_type -> intelligence.ExtractResponse
-	4, // 8: intelligence.IntelligenceService.ExtractBatch:output_type -> intelligence.ExtractBatchResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	9, // 3: intelligence.EmbedResponse.embeddings:type_name -> intelligence.Embedding
+	0, // 4: intelligence.IntelligenceService.Health:input_type -> intelligence.HealthRequest
+	2, // 5: intelligence.IntelligenceService.Extract:input_type -> intelligence.ExtractRequest
+	3, // 6: intelligence.IntelligenceService.ExtractBatch:input_type -> intelligence.ExtractBatchRequest
+	7, // 7: intelligence.IntelligenceService.Embed:input_type -> intelligence.EmbedRequest
+	1, // 8: intelligence.IntelligenceService.Health:output_type -> intelligence.HealthResponse
+	5, // 9: intelligence.IntelligenceService.Extract:output_type -> intelligence.ExtractResponse
+	4, // 10: intelligence.IntelligenceService.ExtractBatch:output_type -> intelligence.ExtractBatchResponse
+	8, // 11: intelligence.IntelligenceService.Embed:output_type -> intelligence.EmbedResponse
+	8, // [8:12] is the sub-list for method output_type
+	4, // [4:8] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_internal_intelligence_proto_intelligence_proto_init() }
@@ -450,7 +597,7 @@ func file_internal_intelligence_proto_intelligence_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_intelligence_proto_intelligence_proto_rawDesc), len(file_internal_intelligence_proto_intelligence_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

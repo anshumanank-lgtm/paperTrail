@@ -1,7 +1,12 @@
 package metadata
 
-import "papertrail/internal/document"
+import (
+	"context"
+
+	"papertrail/internal/document"
+)
 
 type MetadataEngine interface {
-	Extract(content document.ExtractedContent) (document.DocumentMetadata, error)
+	Extract(ctx context.Context, content document.ExtractedContent) (document.DocumentMetadata, error)
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
 }

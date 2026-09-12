@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/uuid"
 	"papertrail/internal/document"
+
+	"github.com/google/uuid"
 )
 
 type intelligenceJob struct {
@@ -143,11 +144,8 @@ func (p *Pipeline) ingestFile(ctx context.Context, indexed indexFile) (intellige
 			return intelligenceJob{}, fmt.Errorf("create document: %w", err)
 		}
 	} else {
-		if err := p.storage.DeleteDocumentRelationships(ctx, documentID); err != nil {
-			return intelligenceJob{}, fmt.Errorf("clear document relationships: %w", err)
-		}
-		if err := p.storage.ReplaceDocumentEntities(ctx, documentID, nil); err != nil {
-			return intelligenceJob{}, fmt.Errorf("clear document entities: %w", err)
+		if err := p.storage.DeleteDocumentChunks(ctx, documentID); err != nil {
+			return intelligenceJob{}, fmt.Errorf("clear document chunks: %w", err)
 		}
 		if err := p.storage.UpdateDocument(ctx, documentID, pending, file.Fingerprint); err != nil {
 			return intelligenceJob{}, fmt.Errorf("update document: %w", err)

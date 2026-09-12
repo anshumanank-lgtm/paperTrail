@@ -8,6 +8,7 @@ service IntelligenceService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc Extract(ExtractRequest) returns (ExtractResponse);
   rpc ExtractBatch(ExtractBatchRequest) returns (ExtractBatchResponse);
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
 }
 
 message HealthRequest {}
@@ -42,4 +43,16 @@ message Entity {
   string type = 1;
   string value = 2;
   float confidence = 3;
+}
+
+message EmbedRequest {
+  repeated string texts = 1;
+}
+
+message EmbedResponse {
+  repeated Embedding embeddings = 1;
+}
+
+message Embedding {
+  repeated float values = 1;
 }

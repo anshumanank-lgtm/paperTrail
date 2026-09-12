@@ -373,3 +373,40 @@ func (s *SQLiteStorage) GetDocumentEntityIDs(
 
 	return entityIDs, nil
 }
+
+func (s *SQLiteStorage) GetEntity(
+	ctx context.Context,
+	entityID uuid.UUID,
+) (*document.Entity, error) {
+	var (
+		idBytes []byte
+		entity  document.Entity
+	)
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, type, value
+		FROM entities
+		WHERE id = ?
+	`,
+		uuidToBytes(entityID),
+	).Scan(
+		&idBytes,
+		&entity.Type,
+		&entity.Value,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("entity not found: %s", entityID)
+		}
+
+		return nil, fmt.Errorf("get entity: %w", err)
+	}
+
+	entity.ID, err = bytesToUUID(idBytes)
+	if err != nil {
+		return nil, fmt.Errorf("decode entity id: %w", err)
+	}
+
+	return &entity, nil
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,9 +26,11 @@ type PythonServer struct {
 }
 
 func StartPythonServer(ctx context.Context) (*PythonServer, error) {
+	pythonExecutable := resolveProjectPath(pythonPath)
+	serverScriptPath := resolveProjectPath(serverScript)
 	cmd := exec.Command(
-		pythonPath,
-		serverScript,
+		pythonExecutable,
+		serverScriptPath,
 	)
 
 	cmd.Stdout = os.Stdout
@@ -50,6 +53,19 @@ func StartPythonServer(ctx context.Context) (*PythonServer, error) {
 	}
 
 	return server, nil
+}
+
+func resolveProjectPath(relativePath string) string {
+	if executable, err := os.Executable(); err == nil {
+		roots := []string{filepath.Dir(executable), filepath.Dir(filepath.Dir(executable))}
+		for _, root := range roots {
+			candidate := filepath.Join(root, relativePath)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+	return relativePath
 }
 
 func (s *PythonServer) waitForReady(ctx context.Context) error {

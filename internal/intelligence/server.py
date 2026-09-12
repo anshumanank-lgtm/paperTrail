@@ -1,9 +1,19 @@
+import os
+import sys
 import signal
+
 import grpc
 from concurrent import futures
 
-from proto import intelligence_pb2
-from proto import intelligence_pb2_grpc
+PROTO_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "proto",
+)
+
+sys.path.insert(0, PROTO_DIR)
+
+import intelligence_pb2
+import intelligence_pb2_grpc
 
 from engine import IntelligenceEngine
 
@@ -65,6 +75,20 @@ class IntelligenceService(
                 )
                 for result in results
             ],
+        )
+
+    def Embed(self, request, context):
+        embeddings = self.engine.embed(
+            list(request.texts)
+        )
+
+        return intelligence_pb2.EmbedResponse(
+            embeddings=[
+                intelligence_pb2.Embedding(
+                    values=embedding
+                )
+                for embedding in embeddings
+            ]
         )
 
 

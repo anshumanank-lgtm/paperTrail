@@ -1,11 +1,15 @@
 import contextlib
 import sys
+import threading
 
 from gliner2 import GLiNER2
+from sentence_transformers import SentenceTransformer
 
 
 MODEL_NAME = "fastino/gliner2-base-v1"
+EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
+# Keep your existing DOCUMENT_TYPES here.
 
 DOCUMENT_TYPES = {
     "invoice": "A document requesting payment for goods or services.",
@@ -22,20 +26,15 @@ DOCUMENT_TYPES = {
     "other": "A document that does not fit the supported document types.",
 }
 
-
+# Keep your existing ENTITY_TYPES here.
 ENTITY_TYPES = {
     # Tier 1 — Always extract
     "person": "A person's name.",
     "organisation": "A company, institution, bank, insurer, government body, or other organisation.",
     "location": "A geographic location or place.",
     "date": "A date or date expression appearing in the document.",
-    "time": "A time or time expression appearing in the document.",
-    "money": "A monetary amount appearing in the document.",
-    "percent": "A percentage or percentage expression appearing in the document.",
-    "quantity": "A quantity expressed with a number and unit.",
     "email": "An email address.",
     "phone_number": "A telephone or mobile phone number.",
-    "url": "A web URL.",
     "product": "A named product, software product, or commercial offering.",
     "event": "A named event, conference, meeting, ceremony, or other occurrence.",
     "vehicle": "A vehicle such as a car, motorcycle, truck, aircraft, or other identifiable vehicle.",
@@ -44,10 +43,6 @@ ENTITY_TYPES = {
     "address": "A physical postal or street address.",
     "id_number": "A document, reference, identification, employee, account, or other identifying number.",
     "job_title": "A person's professional or occupational title.",
-    "law": "A named law or legislation.",
-    "regulation": "A named regulation, regulatory rule, or regulatory standard.",
-    "language": "A human language.",
-    "social_handle": "A social media username or handle.",
 
     # Tier 3 — Extract the document title if present
     "document_title": "The title or heading that identifies the document.",
@@ -58,6 +53,7 @@ LONG_DOCUMENT_OVERLAP = 64
 
 class IntelligenceEngine:
     def __init__(self):
+        self.inference_lock = threading.RLock()
         print("Loading GLiNER2...", file=sys.stderr)
 
         with contextlib.redirect_stdout(sys.stderr):
@@ -72,30 +68,38 @@ class IntelligenceEngine:
             )
         )
 
+        print("Loading embedding model...", file=sys.stderr)
+
+        with contextlib.redirect_stdout(sys.stderr):
+            self.embedder = SentenceTransformer(
+                EMBEDDING_MODEL_NAME
+            )
+
         print(
-            "GLiNER2 intelligence engine ready "
-            "(long-document chunking enabled)"
+            "Intelligence engine ready "
+            "(GLiNER2 + BGE embeddings)"
         )
 
     def extract(self, text):
-        if not text.strip():
-            return {
-                "title": "",
-                "title_confidence": 0.0,
-                "document_type": "unknown",
-                "document_type_confidence": 0.0,
-                "entities": [],
-            }
+        with self.inference_lock:
+            if not text.strip():
+                return {
+                    "title": "",
+                    "title_confidence": 0.0,
+                    "document_type": "unknown",
+                    "document_type_confidence": 0.0,
+                    "entities": [],
+                }
 
-        result = self.extractor.extract_long(
-            text,
-            self.schema,
-            chunk_size=384,
-            chunk_overlap=64,
-            include_confidence=True,
-        )
+            result = self.extractor.extract_long(
+                text,
+                self.schema,
+                chunk_size=384,
+                chunk_overlap=LONG_DOCUMENT_OVERLAP,
+                include_confidence=True,
+            )
 
-        return self._parse_result(result)
+            return self._parse_result(result)
 
     def _parse_result(self, result):
         title = ""
@@ -126,12 +130,22 @@ class IntelligenceEngine:
                     "confidence": confidence,
                 })
 
-        document_type = result.get("document_type", "unknown")
+        document_type = result.get(
+            "document_type",
+            "unknown",
+        )
+
         document_type_confidence = 0.0
 
         if isinstance(document_type, dict):
-            document_type_confidence = document_type.get("confidence", 0.0)
-            document_type = document_type.get("label", "unknown")
+            document_type_confidence = document_type.get(
+                "confidence",
+                0.0,
+            )
+            document_type = document_type.get(
+                "label",
+                "unknown",
+            )
 
         return {
             "title": title,
@@ -143,3 +157,16 @@ class IntelligenceEngine:
 
     def extract_batch(self, texts):
         return [self.extract(text) for text in texts]
+
+    def embed(self, texts):
+        with self.inference_lock:
+            if not texts:
+                return []
+
+            embeddings = self.embedder.encode(
+                texts,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+
+            return embeddings.tolist()

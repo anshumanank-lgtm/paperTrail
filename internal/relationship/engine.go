@@ -3,7 +3,6 @@ package relationship
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -21,15 +20,6 @@ func NewEngine(storage storage.Storage) *Engine {
 	return &Engine{
 		storage: storage,
 	}
-}
-
-var relationshipEntityPriority = []document.EntityType{
-	document.EntityTypeOrganisation,
-	document.EntityTypeProduct,
-	document.EntityTypeIDNumber,
-	document.EntityTypeEvent,
-	document.EntityTypeAddress,
-	document.EntityTypePerson,
 }
 
 func relationshipType(entityType document.EntityType) (string, bool) {
@@ -210,115 +200,4 @@ func (e *Engine) processMetadataValue(
 	}
 
 	return nil
-}
-
-func (e *Engine) GetRelatedDocuments(
-	ctx context.Context,
-	documentID uuid.UUID,
-	limit int,
-) ([]RelatedDocument, error) {
-	if limit <= 0 {
-		return []RelatedDocument{}, nil
-	}
-
-	relationships, err := e.storage.GetDocumentRelationships(
-		ctx,
-		documentID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("get document relationships: %w", err)
-	}
-
-	best := make(map[uuid.UUID]storage.DocumentRelationship)
-
-	for _, relationship := range relationships {
-		otherDocumentID := relationship.DocumentB
-
-		if otherDocumentID == documentID {
-			otherDocumentID = relationship.DocumentA
-		}
-
-		priority, ok := relationshipPriority(
-			relationship.RelationshipType,
-		)
-		if !ok {
-			continue
-		}
-
-		current, exists := best[otherDocumentID]
-
-		if exists {
-			currentPriority, _ := relationshipPriority(
-				current.RelationshipType,
-			)
-
-			if priority >= currentPriority {
-				continue
-			}
-		}
-
-		best[otherDocumentID] = relationship
-	}
-
-	results := make([]RelatedDocument, 0, len(best))
-
-	for _, relationship := range best {
-		otherDocumentID := relationship.DocumentB
-
-		if otherDocumentID == documentID {
-			otherDocumentID = relationship.DocumentA
-		}
-
-		doc, err := e.storage.GetDocument(
-			ctx,
-			otherDocumentID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"get related document %s: %w",
-				otherDocumentID,
-				err,
-			)
-		}
-
-		results = append(results, RelatedDocument{
-			DocumentID:       otherDocumentID,
-			RelationshipType: relationship.RelationshipType,
-			Entities:         relationship.Entities,
-			ModifiedAt:       doc.FileMetadata.ModifiedAt,
-		})
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].ModifiedAt.After(results[j].ModifiedAt)
-	})
-
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	return results, nil
-}
-
-func relationshipPriority(relationshipType string) (int, bool) {
-	switch relationshipType {
-	case "shared_organisation":
-		return 1, true
-	case "shared_product":
-		return 2, true
-	case "shared_id":
-		return 3, true
-	case "shared_event":
-		return 4, true
-	case "shared_address":
-		return 5, true
-	case "shared_person":
-		return 6, true
-	case "shared_author":
-		return 7, true
-	case "shared_creator":
-		return 8, true
-	default:
-		return 0, false
-	}
 }

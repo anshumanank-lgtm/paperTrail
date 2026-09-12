@@ -1,3 +1,5 @@
 gliner2[local]
 grpcio
 grpcio-tools
+sentence-transformers==5.1.0
+torch==2.14.0
