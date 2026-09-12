@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from proto import intelligence_pb2 as proto_dot_intelligence__pb2
+import intelligence_pb2 as intelligence__pb2
 
 GRPC_GENERATED_VERSION = '1.83.1'
 GRPC_VERSION = grpc.__version__
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in proto/intelligence_pb2_grpc.py depends on'
+        + ' but the generated code in intelligence_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -36,18 +36,23 @@ class IntelligenceServiceStub:
         """
         self.Health = channel.unary_unary(
                 '/intelligence.IntelligenceService/Health',
-                request_serializer=proto_dot_intelligence__pb2.HealthRequest.SerializeToString,
-                response_deserializer=proto_dot_intelligence__pb2.HealthResponse.FromString,
+                request_serializer=intelligence__pb2.HealthRequest.SerializeToString,
+                response_deserializer=intelligence__pb2.HealthResponse.FromString,
                 _registered_method=True)
         self.Extract = channel.unary_unary(
                 '/intelligence.IntelligenceService/Extract',
-                request_serializer=proto_dot_intelligence__pb2.ExtractRequest.SerializeToString,
-                response_deserializer=proto_dot_intelligence__pb2.ExtractResponse.FromString,
+                request_serializer=intelligence__pb2.ExtractRequest.SerializeToString,
+                response_deserializer=intelligence__pb2.ExtractResponse.FromString,
                 _registered_method=True)
         self.ExtractBatch = channel.unary_unary(
                 '/intelligence.IntelligenceService/ExtractBatch',
-                request_serializer=proto_dot_intelligence__pb2.ExtractBatchRequest.SerializeToString,
-                response_deserializer=proto_dot_intelligence__pb2.ExtractBatchResponse.FromString,
+                request_serializer=intelligence__pb2.ExtractBatchRequest.SerializeToString,
+                response_deserializer=intelligence__pb2.ExtractBatchResponse.FromString,
+                _registered_method=True)
+        self.Embed = channel.unary_unary(
+                '/intelligence.IntelligenceService/Embed',
+                request_serializer=intelligence__pb2.EmbedRequest.SerializeToString,
+                response_deserializer=intelligence__pb2.EmbedResponse.FromString,
                 _registered_method=True)
 
 
@@ -72,23 +77,34 @@ class IntelligenceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Embed(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IntelligenceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Health': grpc.unary_unary_rpc_method_handler(
                     servicer.Health,
-                    request_deserializer=proto_dot_intelligence__pb2.HealthRequest.FromString,
-                    response_serializer=proto_dot_intelligence__pb2.HealthResponse.SerializeToString,
+                    request_deserializer=intelligence__pb2.HealthRequest.FromString,
+                    response_serializer=intelligence__pb2.HealthResponse.SerializeToString,
             ),
             'Extract': grpc.unary_unary_rpc_method_handler(
                     servicer.Extract,
-                    request_deserializer=proto_dot_intelligence__pb2.ExtractRequest.FromString,
-                    response_serializer=proto_dot_intelligence__pb2.ExtractResponse.SerializeToString,
+                    request_deserializer=intelligence__pb2.ExtractRequest.FromString,
+                    response_serializer=intelligence__pb2.ExtractResponse.SerializeToString,
             ),
             'ExtractBatch': grpc.unary_unary_rpc_method_handler(
                     servicer.ExtractBatch,
-                    request_deserializer=proto_dot_intelligence__pb2.ExtractBatchRequest.FromString,
-                    response_serializer=proto_dot_intelligence__pb2.ExtractBatchResponse.SerializeToString,
+                    request_deserializer=intelligence__pb2.ExtractBatchRequest.FromString,
+                    response_serializer=intelligence__pb2.ExtractBatchResponse.SerializeToString,
+            ),
+            'Embed': grpc.unary_unary_rpc_method_handler(
+                    servicer.Embed,
+                    request_deserializer=intelligence__pb2.EmbedRequest.FromString,
+                    response_serializer=intelligence__pb2.EmbedResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -116,8 +132,8 @@ class IntelligenceService:
             request,
             target,
             '/intelligence.IntelligenceService/Health',
-            proto_dot_intelligence__pb2.HealthRequest.SerializeToString,
-            proto_dot_intelligence__pb2.HealthResponse.FromString,
+            intelligence__pb2.HealthRequest.SerializeToString,
+            intelligence__pb2.HealthResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -143,8 +159,8 @@ class IntelligenceService:
             request,
             target,
             '/intelligence.IntelligenceService/Extract',
-            proto_dot_intelligence__pb2.ExtractRequest.SerializeToString,
-            proto_dot_intelligence__pb2.ExtractResponse.FromString,
+            intelligence__pb2.ExtractRequest.SerializeToString,
+            intelligence__pb2.ExtractResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -170,8 +186,35 @@ class IntelligenceService:
             request,
             target,
             '/intelligence.IntelligenceService/ExtractBatch',
-            proto_dot_intelligence__pb2.ExtractBatchRequest.SerializeToString,
-            proto_dot_intelligence__pb2.ExtractBatchResponse.FromString,
+            intelligence__pb2.ExtractBatchRequest.SerializeToString,
+            intelligence__pb2.ExtractBatchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Embed(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/intelligence.IntelligenceService/Embed',
+            intelligence__pb2.EmbedRequest.SerializeToString,
+            intelligence__pb2.EmbedResponse.FromString,
             options,
             channel_credentials,
             insecure,

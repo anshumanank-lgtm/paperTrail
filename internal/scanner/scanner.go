@@ -25,12 +25,11 @@ type DocumentFile struct {
 var supportedExtensions = map[string]struct{}{
 	".pdf":  {},
 	".txt":  {},
-	".doc":  {},
 	".docx": {},
-	".xls":  {},
 	".xlsx": {},
-	".ppt":  {},
 	".pptx": {},
+	".csv":  {},
+	".epub": {},
 }
 
 // Scan recursively discovers every supported file under folderPath.

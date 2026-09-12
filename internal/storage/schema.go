@@ -98,6 +98,24 @@ CREATE TABLE IF NOT EXISTS relationship_entities (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS chunks (
+    id INTEGER PRIMARY KEY,
+    document_id BLOB NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(document_id, chunk_index),
+
+    FOREIGN KEY (document_id)
+        REFERENCES documents(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document_id
+ON chunks(document_id);
+
 CREATE INDEX IF NOT EXISTS idx_documents_modified_at
     ON documents(modified_at);
 

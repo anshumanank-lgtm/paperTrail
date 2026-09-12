@@ -22,6 +22,7 @@ const (
 	IntelligenceService_Health_FullMethodName       = "/intelligence.IntelligenceService/Health"
 	IntelligenceService_Extract_FullMethodName      = "/intelligence.IntelligenceService/Extract"
 	IntelligenceService_ExtractBatch_FullMethodName = "/intelligence.IntelligenceService/ExtractBatch"
+	IntelligenceService_Embed_FullMethodName        = "/intelligence.IntelligenceService/Embed"
 )
 
 // IntelligenceServiceClient is the client API for IntelligenceService service.
@@ -31,6 +32,7 @@ type IntelligenceServiceClient interface {
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	Extract(ctx context.Context, in *ExtractRequest, opts ...grpc.CallOption) (*ExtractResponse, error)
 	ExtractBatch(ctx context.Context, in *ExtractBatchRequest, opts ...grpc.CallOption) (*ExtractBatchResponse, error)
+	Embed(ctx context.Context, in *EmbedRequest, opts ...grpc.CallOption) (*EmbedResponse, error)
 }
 
 type intelligenceServiceClient struct {
@@ -71,6 +73,16 @@ func (c *intelligenceServiceClient) ExtractBatch(ctx context.Context, in *Extrac
 	return out, nil
 }
 
+func (c *intelligenceServiceClient) Embed(ctx context.Context, in *EmbedRequest, opts ...grpc.CallOption) (*EmbedResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmbedResponse)
+	err := c.cc.Invoke(ctx, IntelligenceService_Embed_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IntelligenceServiceServer is the server API for IntelligenceService service.
 // All implementations must embed UnimplementedIntelligenceServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type IntelligenceServiceServer interface {
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	Extract(context.Context, *ExtractRequest) (*ExtractResponse, error)
 	ExtractBatch(context.Context, *ExtractBatchRequest) (*ExtractBatchResponse, error)
+	Embed(context.Context, *EmbedRequest) (*EmbedResponse, error)
 	mustEmbedUnimplementedIntelligenceServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedIntelligenceServiceServer) Extract(context.Context, *ExtractR
 }
 func (UnimplementedIntelligenceServiceServer) ExtractBatch(context.Context, *ExtractBatchRequest) (*ExtractBatchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExtractBatch not implemented")
+}
+func (UnimplementedIntelligenceServiceServer) Embed(context.Context, *EmbedRequest) (*EmbedResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Embed not implemented")
 }
 func (UnimplementedIntelligenceServiceServer) mustEmbedUnimplementedIntelligenceServiceServer() {}
 func (UnimplementedIntelligenceServiceServer) testEmbeddedByValue()                             {}
@@ -172,6 +188,24 @@ func _IntelligenceService_ExtractBatch_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IntelligenceService_Embed_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EmbedRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IntelligenceServiceServer).Embed(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IntelligenceService_Embed_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IntelligenceServiceServer).Embed(ctx, req.(*EmbedRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IntelligenceService_ServiceDesc is the grpc.ServiceDesc for IntelligenceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var IntelligenceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExtractBatch",
 			Handler:    _IntelligenceService_ExtractBatch_Handler,
+		},
+		{
+			MethodName: "Embed",
+			Handler:    _IntelligenceService_Embed_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

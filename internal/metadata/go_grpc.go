@@ -10,6 +10,8 @@ import (
 	intelligencepb "papertrail/internal/intelligence/proto"
 )
 
+const embedTimeout = 30 * time.Second
+
 const (
 	titleConfidenceThreshold        = 0.50
 	documentTypeConfidenceThreshold = 0.70
@@ -30,11 +32,12 @@ func NewGRPCMetadataEngine(
 }
 
 func (e *GRPCMetadataEngine) Extract(
+	parentCtx context.Context,
 	content document.ExtractedContent,
 ) (document.DocumentMetadata, error) {
 
 	ctx, cancel := context.WithTimeout(
-		context.Background(),
+		parentCtx,
 		extractTimeout,
 	)
 	defer cancel()
@@ -84,6 +87,43 @@ func mapMetadata(
 	}
 
 	return metadata
+}
+
+func (e *GRPCMetadataEngine) Embed(
+	parentCtx context.Context,
+	texts []string,
+) ([][]float32, error) {
+
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(
+		parentCtx,
+		embedTimeout,
+	)
+	defer cancel()
+
+	response, err := e.client.Embed(
+		ctx,
+		&intelligencepb.EmbedRequest{
+			Texts: texts,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	embeddings := make([][]float32, 0, len(response.GetEmbeddings()))
+
+	for _, embedding := range response.GetEmbeddings() {
+		embeddings = append(
+			embeddings,
+			embedding.GetValues(),
+		)
+	}
+
+	return embeddings, nil
 }
 
 func mapDocumentType(value string) document.DocumentType {

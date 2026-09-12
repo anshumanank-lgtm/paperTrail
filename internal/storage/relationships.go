@@ -73,7 +73,7 @@ func (s *SQLiteStorage) CreateRelationship(
 		return relationshipID, nil
 	}
 
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, fmt.Errorf("check relationship: %w", err)
 	}
 

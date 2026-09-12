@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"papertrail/internal/document"
+	"papertrail/internal/storage"
 )
 
 type Repository interface {
@@ -20,117 +21,44 @@ type Repository interface {
 	SearchByType(ctx context.Context, value string) ([]document.Document, error)
 
 	GetDocument(ctx context.Context, id uuid.UUID) (*document.Document, error)
+	ListDocuments(ctx context.Context) ([]document.Document, error)
 	GetDocumentEntities(ctx context.Context, documentID uuid.UUID) ([]document.Entity, error)
 	GetDocumentRelationships(ctx context.Context, documentID uuid.UUID) ([]document.DocumentRelationship, error)
+
+	GetEntity(ctx context.Context, entityID uuid.UUID) (*document.Entity, error)
+	GetDocumentsByEntity(ctx context.Context, entityID uuid.UUID) ([]document.Document, error)
+
+	SearchChunks(ctx context.Context, embedding []float32, limit int) ([]storage.ChunkSearchResult, error)
 }
 
 type Service struct {
 	repository Repository
+	embedder   Embedder
+	answerer   Answerer
 }
 
-func NewService(repository Repository) *Service {
+type Embedder interface {
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
+}
+
+type Answerer interface {
+	Answer(
+		ctx context.Context,
+		question string,
+		chunks []string,
+	) (string, error)
+}
+
+func NewService(
+	repository Repository,
+	embedder Embedder,
+	answerer Answerer,
+) *Service {
 	return &Service{
 		repository: repository,
+		embedder:   embedder,
+		answerer:   answerer,
 	}
-}
-
-func (s *Service) Search(
-	ctx context.Context,
-	query SearchQuery,
-) ([]SearchResult, error) {
-	query.Value = strings.TrimSpace(query.Value)
-
-	log.Printf(
-		"[SEARCH] request: by=%s value=%q",
-		query.By,
-		query.Value,
-	)
-
-	if query.Value == "" {
-		err := fmt.Errorf("search value is empty")
-		log.Printf("[SEARCH] error: %v", err)
-		return nil, err
-	}
-
-	var (
-		documents []document.Document
-		matches   map[uuid.UUID][]document.Entity
-		err       error
-	)
-
-	switch query.By {
-	case SearchByFilename:
-		documents, err = s.repository.SearchByFilename(ctx, query.Value)
-
-	case SearchByDate:
-		documents, err = s.repository.SearchByDate(ctx, query.Value)
-
-	case SearchByAuthor:
-		documents, err = s.repository.SearchByAuthor(ctx, query.Value)
-
-	case SearchByCreator:
-		documents, err = s.repository.SearchByCreator(ctx, query.Value)
-
-	case SearchByType:
-		documents, err = s.repository.SearchByType(ctx, query.Value)
-
-	case SearchByText:
-		textMatches, searchErr := s.repository.SearchByText(ctx, query.Value)
-		if searchErr != nil {
-			log.Printf("[SEARCH] repository error: %v", searchErr)
-			return nil, searchErr
-		}
-
-		log.Printf(
-			"[SEARCH] repository response: text_matches=%d",
-			len(textMatches),
-		)
-
-		documents = make([]document.Document, 0, len(textMatches))
-		matches = make(map[uuid.UUID][]document.Entity)
-
-		for _, match := range textMatches {
-			documents = append(documents, match.Document)
-			matches[match.Document.ID] = match.Entities
-		}
-
-	default:
-		err := fmt.Errorf("unsupported search field: %q", query.By)
-		log.Printf("[SEARCH] error: %v", err)
-		return nil, err
-	}
-
-	if err != nil {
-		log.Printf("[SEARCH] repository error: %v", err)
-		return nil, err
-	}
-
-	results := make([]SearchResult, 0, len(documents))
-
-	for _, doc := range documents {
-		results = append(results, SearchResult{
-			Document:        doc,
-			MatchedEntities: matches[doc.ID],
-		})
-	}
-
-	log.Printf(
-		"[SEARCH] response: results=%d",
-		len(results),
-	)
-
-	for i, result := range results {
-		log.Printf(
-			"[SEARCH] result[%d]: id=%s title=%q filename=%q type=%s",
-			i,
-			result.Document.ID,
-			result.Document.DocumentMetadata.Title,
-			result.Document.FileMetadata.Filename,
-			result.Document.DocumentMetadata.DocumentType,
-		)
-	}
-
-	return results, nil
 }
 
 func (s *Service) GetDocumentDetail(
@@ -148,22 +76,54 @@ func (s *Service) GetDocumentDetail(
 		return nil, err
 	}
 
-	entities, err := s.repository.GetDocumentEntities(ctx, documentID)
+	entities, err := s.repository.GetDocumentEntities(
+		ctx,
+		documentID,
+	)
 	if err != nil {
 		log.Printf("[SEARCH] detail entities error: %v", err)
 		return nil, fmt.Errorf("get document entities: %w", err)
 	}
 
-	relationships, err := s.repository.GetDocumentRelationships(ctx, documentID)
+	relationships, err := s.repository.GetDocumentRelationships(
+		ctx,
+		documentID,
+	)
 	if err != nil {
 		log.Printf("[SEARCH] detail relationships error: %v", err)
 		return nil, fmt.Errorf("get document relationships: %w", err)
 	}
 
+	details := make([]RelationshipDetail, 0, len(relationships))
+
+	for _, relationship := range relationships {
+		otherDocumentID := relationship.DocumentB
+		if relationship.DocumentB == documentID {
+			otherDocumentID = relationship.DocumentA
+		}
+
+		otherDocument, err := s.repository.GetDocument(
+			ctx,
+			otherDocumentID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"get related document %s: %w",
+				otherDocumentID,
+				err,
+			)
+		}
+
+		details = append(details, RelationshipDetail{
+			Relationship:  relationship,
+			OtherDocument: *otherDocument,
+		})
+	}
+
 	result := &DocumentDetail{
 		Document:      *doc,
 		Entities:      entities,
-		Relationships: relationships,
+		Relationships: details,
 	}
 
 	log.Printf(
@@ -171,8 +131,166 @@ func (s *Service) GetDocumentDetail(
 		documentID,
 		doc.DocumentMetadata.Title,
 		len(entities),
-		len(relationships),
+		len(details),
 	)
 
 	return result, nil
+}
+
+func (s *Service) ListDocuments(
+	ctx context.Context,
+) ([]document.Document, error) {
+	log.Printf("[SEARCH] list documents request")
+
+	documents, err := s.repository.ListDocuments(ctx)
+	if err != nil {
+		log.Printf("[SEARCH] list documents error: %v", err)
+		return nil, err
+	}
+
+	log.Printf(
+		"[SEARCH] list documents response: documents=%d",
+		len(documents),
+	)
+
+	return documents, nil
+}
+
+func (s *Service) GetEntityDetail(
+	ctx context.Context,
+	entityID uuid.UUID,
+) (*EntityDetail, error) {
+	log.Printf(
+		"[SEARCH] entity request: entity_id=%s",
+		entityID,
+	)
+
+	entity, err := s.repository.GetEntity(ctx, entityID)
+	if err != nil {
+		log.Printf("[SEARCH] entity error: %v", err)
+		return nil, err
+	}
+
+	documents, err := s.repository.GetDocumentsByEntity(
+		ctx,
+		entityID,
+	)
+	if err != nil {
+		log.Printf("[SEARCH] entity documents error: %v", err)
+		return nil, fmt.Errorf(
+			"get entity documents: %w",
+			err,
+		)
+	}
+
+	return &EntityDetail{
+		Entity:    *entity,
+		Documents: documents,
+	}, nil
+}
+
+func (s *Service) Ask(
+	ctx context.Context,
+	question string,
+) (string, error) {
+	question = strings.TrimSpace(question)
+
+	if question == "" {
+		return "", fmt.Errorf("question is empty")
+	}
+
+	log.Printf(
+		"[SEARCH] ask request: question=%q",
+		question,
+	)
+
+	embeddings, err := s.embedder.Embed(
+		ctx,
+		[]string{question},
+	)
+	if err != nil {
+		return "", fmt.Errorf(
+			"embed question: %w",
+			err,
+		)
+	}
+
+	if len(embeddings) != 1 {
+		return "", fmt.Errorf(
+			"unexpected query embedding count: %d",
+			len(embeddings),
+		)
+	}
+
+	results, err := s.repository.SearchChunks(
+		ctx,
+		embeddings[0],
+		5,
+	)
+	if err != nil {
+		return "", fmt.Errorf(
+			"search chunks: %w",
+			err,
+		)
+	}
+
+	if len(results) == 0 {
+		return "I couldn't find any relevant information in your documents.", nil
+	}
+
+	contextChunks := make([]string, 0, len(results))
+
+	for _, result := range results {
+		doc, err := s.repository.GetDocument(
+			ctx,
+			result.Chunk.DocumentID,
+		)
+		if err != nil {
+			return "", fmt.Errorf(
+				"get document metadata: %w",
+				err,
+			)
+		}
+
+		var b strings.Builder
+
+		fmt.Fprintf(
+			&b,
+			"Document: %s\n",
+			doc.DocumentMetadata.Title,
+		)
+
+		fmt.Fprintf(
+			&b,
+			"Filename: %s\n",
+			doc.FileMetadata.Filename,
+		)
+
+		fmt.Fprintf(
+			&b,
+			"Document type: %s\n\n",
+			doc.DocumentMetadata.DocumentType,
+		)
+
+		fmt.Fprintf(
+			&b,
+			"Content:\n%s",
+			result.Chunk.Text,
+		)
+
+		contextChunks = append(
+			contextChunks,
+			b.String(),
+		)
+	}
+
+	log.Printf(
+		"[SEARCH] ask response: context_chunks=%d",
+		len(contextChunks),
+	)
+	return s.answerer.Answer(
+		ctx,
+		question,
+		contextChunks,
+	)
 }

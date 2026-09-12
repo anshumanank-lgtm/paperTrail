@@ -15,8 +15,6 @@ func shouldStoreEntity(entityType document.EntityType) bool {
 		document.EntityTypeAddress,
 		document.EntityTypeVehicle,
 		document.EntityTypeLocation,
-		document.EntityTypeMoney,
-		document.EntityTypeDate,
 		document.EntityTypeEmail,
 		document.EntityTypePhoneNumber,
 		document.EntityTypeJobTitle:

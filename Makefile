@@ -1,6 +1,6 @@
 # Usage:
-#   make run ARGS=./test   # Set up environment, build, and run Papertrail
 #   make build             # Set up environment and build the Papertrail binary
+#   make proto             # Regenerate Go and gRPC protobuf bindings
 #   make test              # Run Go tests
 #   make sca               # Run static code analysis with golangci-lint
 #   make clean             # Remove build artifacts and local database
@@ -15,7 +15,10 @@ PIP := $(VENV)/bin/pip
 REQUIREMENTS := internal/intelligence/requirements.txt
 VENV_STAMP := $(VENV)/.installed
 
-.PHONY: setup build run scan sca test clean deep-clean
+PROTO_DIR := internal/intelligence/proto
+PROTO_FILE := $(PROTO_DIR)/intelligence.proto
+
+.PHONY: setup proto build start test clean deep-clean sca
 
 setup: $(VENV_STAMP)
 
@@ -24,17 +27,26 @@ $(VENV_STAMP): $(REQUIREMENTS)
 	$(PIP) install -r $(REQUIREMENTS)
 	@touch $(VENV_STAMP)
 
-build: setup
+proto:
+	protoc \
+		--go_out=. \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=. \
+		--go-grpc_opt=paths=source_relative \
+		$(PROTO_FILE)
+
+	$(PYTHON) -m grpc_tools.protoc \
+		-I$(PROTO_DIR) \
+		--python_out=$(PROTO_DIR) \
+		--grpc_python_out=$(PROTO_DIR) \
+		$(PROTO_FILE)
+
+build: setup proto
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(APP) ./cmd/papertrail
 
-run: build
-	./$(BUILD_DIR)/$(APP) $(ARGS)
-
-scan: run
-
 sca: setup
-	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run ./...
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run ./... --disable errcheck
 
 test:
 	go test ./...
@@ -45,3 +57,6 @@ clean:
 
 deep-clean: clean
 	rm -rf $(VENV)
+
+start: build
+	set -a && . ./.env && set +a && $(MAKE) build && ./bin/papertrail

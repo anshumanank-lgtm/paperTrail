@@ -26,7 +26,15 @@ func New(converters ...Converter) *Dispatcher {
 
 // Default returns a Dispatcher with the converters available in Papertrail 0.1.0.
 func Default() *Dispatcher {
-	return New(TextConverter{}, PDFConverter{})
+	return New(
+		TextConverter{},
+		PDFConverter{},
+		DOCXConverter{},
+		EPUBConverter{},
+		CSVConverter{},
+		XLSXConverter{},
+		PPTXConverter{},
+	)
 }
 
 // Convert converts one file using the converter registered for its extension.
@@ -56,33 +64,6 @@ func (d *Dispatcher) Convert(file scanner.DocumentFile) (document.ExtractedConte
 type FileError struct {
 	SourcePath string
 	Err        error
-}
-
-func (e FileError) Error() string {
-	return e.Err.Error()
-}
-
-// ConvertAll converts every file independently.
-func (d *Dispatcher) ConvertAll(
-	files []scanner.DocumentFile,
-) ([]document.ExtractedContent, []FileError) {
-	contents := make([]document.ExtractedContent, 0, len(files))
-	var errors []FileError
-
-	for _, file := range files {
-		content, err := d.Convert(file)
-		if err != nil {
-			errors = append(errors, FileError{
-				SourcePath: file.AbsolutePath,
-				Err:        err,
-			})
-			continue
-		}
-
-		contents = append(contents, content)
-	}
-
-	return contents, errors
 }
 
 func hasExtension(extension, expected string) bool {
