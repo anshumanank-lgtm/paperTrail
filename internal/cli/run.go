@@ -470,9 +470,16 @@ func (c *Controller) getDocument(id string) commandResponse {
 
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "Document: %s\n", detail.Document.ID)
+	title := strings.TrimSpace(
+		detail.Document.DocumentMetadata.Title,
+	)
+	if title == "" {
+		title = detail.Document.FileMetadata.Filename
+	}
+
+	fmt.Fprintf(&b, "Document: %s\n", title)
+	fmt.Fprintf(&b, "ID: %s\n", detail.Document.ID)
 	fmt.Fprintf(&b, "Filename: %s\n", detail.Document.FileMetadata.Filename)
-	fmt.Fprintf(&b, "Title: %s\n", detail.Document.DocumentMetadata.Title)
 	fmt.Fprintf(&b, "Type: %s\n", detail.Document.DocumentMetadata.DocumentType)
 	fmt.Fprintf(&b, "Path: %s\n", detail.Document.FileMetadata.SourcePath)
 	fmt.Fprintf(&b, "Size: %d\n", detail.Document.FileMetadata.Size)
@@ -482,82 +489,118 @@ func (c *Controller) getDocument(id string) commandResponse {
 		detail.Document.FileMetadata.ModifiedAt.Format("2006-01-02 15:04:05"),
 	)
 
-	b.WriteString("\nEntities:\n")
+	b.WriteString("\nGraph:\n")
 
-	if len(detail.Entities) == 0 {
-		b.WriteString("  None\n")
-	} else {
-		for _, entity := range detail.Entities {
-			fmt.Fprintf(
-				&b,
-				"  %s  %s  %s\n",
-				entity.ID,
-				entity.Type,
-				entity.Value,
-			)
-		}
-	}
+	fmt.Fprintf(
+		&b,
+		"[%s]\n",
+		title,
+	)
+	fmt.Fprintf(
+		&b,
+		"ID: %s\n",
+		detail.Document.ID,
+	)
 
-	b.WriteString("\nRelationships:\n")
+	// Entities connected to this document.
+	if len(detail.Entities) > 0 {
+		b.WriteString("├── Entities\n")
 
-	if len(detail.Relationships) == 0 {
-		b.WriteString("  None")
-	} else {
-		for _, relationship := range detail.Relationships {
-			otherDocument := relationship.OtherDocument
-
-			title := strings.TrimSpace(
-				otherDocument.DocumentMetadata.Title,
-			)
-			if title == "" {
-				title = otherDocument.FileMetadata.Filename
+		for i, entity := range detail.Entities {
+			prefix := "│   ├──"
+			if i == len(detail.Entities)-1 {
+				prefix = "│   └──"
 			}
 
 			fmt.Fprintf(
 				&b,
-				"  %s\n",
+				"%s %s: %s\n",
+				prefix,
+				entity.Type,
+				entity.Value,
+			)
+
+			idPrefix := "│   │   "
+			if i == len(detail.Entities)-1 {
+				idPrefix = "│       "
+			}
+
+			fmt.Fprintf(
+				&b,
+				"%sID: %s\n",
+				idPrefix,
+				entity.ID,
+			)
+		}
+	} else {
+		b.WriteString("├── Entities: None\n")
+	}
+
+	// Documents connected through relationships.
+	if len(detail.Relationships) > 0 {
+		b.WriteString("└── Relationships\n")
+
+		for i, relationship := range detail.Relationships {
+			prefix := "    ├──"
+			if i == len(detail.Relationships)-1 {
+				prefix = "    └──"
+			}
+
+			fmt.Fprintf(
+				&b,
+				"%s %s\n",
+				prefix,
 				relationship.Relationship.RelationshipType,
 			)
+
+			otherDocument := relationship.OtherDocument
+
+			otherTitle := strings.TrimSpace(
+				otherDocument.DocumentMetadata.Title,
+			)
+			if otherTitle == "" {
+				otherTitle = otherDocument.FileMetadata.Filename
+			}
+
 			fmt.Fprintf(
 				&b,
-				"    Document: %s\n",
-				title,
+				"    │   Document: %s\n",
+				otherTitle,
 			)
 			fmt.Fprintf(
 				&b,
-				"    Filename: %s\n",
-				otherDocument.FileMetadata.Filename,
-			)
-			fmt.Fprintf(
-				&b,
-				"    ID: %s\n",
+				"    │   ID: %s\n",
 				otherDocument.ID,
 			)
 
 			if relationship.Relationship.Confidence != nil {
 				fmt.Fprintf(
 					&b,
-					"    Confidence: %.2f\n",
+					"    │   Confidence: %.2f\n",
 					*relationship.Relationship.Confidence,
 				)
 			}
 
 			if len(relationship.Relationship.Entities) > 0 {
-				b.WriteString("    Entities:\n")
+				b.WriteString("    │   Entities:\n")
 
 				for _, entity := range relationship.Relationship.Entities {
 					fmt.Fprintf(
 						&b,
-						"      %s  %s  %s\n",
-						entity.ID,
+						"    │   └── %s: %s\n",
 						entity.Type,
 						entity.Value,
 					)
+					fmt.Fprintf(
+						&b,
+						"    │       ID: %s\n",
+						entity.ID,
+					)
 				}
 			}
-
-			b.WriteString("\n")
 		}
+	} else {
+		b.WriteString("└── Relationships: None\n")
 	}
 
 	return commandResponse{

@@ -5,6 +5,7 @@
 #   make sca               # Run static code analysis with golangci-lint
 #   make clean             # Remove build artifacts and local database
 #   make deep-clean        # Clean everything, including the Python virtual environment
+#   make start             # Start the Papertrail application with environment variables from .env
 
 APP := papertrail
 BUILD_DIR := bin
